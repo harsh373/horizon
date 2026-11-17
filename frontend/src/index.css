@@ -1,0 +1,436 @@
+@import "tailwindcss";
+@import "./map.css";
+
+/*
+  Design tokens. Every colour in the app comes from these variables, so light
+  and dark mode are two sets of values for the same design.
+  Layers (light): desktop backdrop -> bg (paper) -> surface (faint tint) -> elevated (white)
+  Layers (dark):  desktop backdrop -> bg -> surface -> elevated, each a small step lighter.
+*/
+:root,
+:root[data-theme="light"] {
+  --desktop: #dadbe0;
+  --desktop-deep: #cfd1d8;
+  --bg: #fcfcfd;
+  --surface: #f4f4f6;
+  --elevated: #ffffff;
+  --sidebar: #f1f1f4;
+  --text: #1d1d1f;
+  --text-secondary: #55555a;
+  --text-tertiary: #6e6e73;
+  --border: rgba(0, 0, 0, 0.09);
+  --window-border: rgba(0, 0, 0, 0.14);
+  --hover: rgba(0, 0, 0, 0.04);
+  --selected: rgba(0, 0, 0, 0.07);
+  --shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --window-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 32px 80px -24px rgba(0, 0, 0, 0.3),
+    0 10px 30px rgba(0, 0, 0, 0.08);
+  --green: #34c759;
+  --blue: #0a84ff;
+  --orange: #ff9f0a;
+  --red: #ff453a;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --desktop: #0e0f11;
+  --desktop-deep: #08090a;
+  --bg: #1a1a1c;
+  --surface: #232326;
+  --elevated: #2b2b2f;
+  --sidebar: #212124;
+  --text: #f3f3f5;
+  --text-secondary: #a3a3aa;
+  --text-tertiary: #86868e;
+  --border: rgba(255, 255, 255, 0.08);
+  --window-border: rgba(255, 255, 255, 0.13);
+  --hover: rgba(255, 255, 255, 0.05);
+  --selected: rgba(255, 255, 255, 0.09);
+  --shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.05), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --window-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.7), 0 32px 80px -16px rgba(0, 0, 0, 0.7),
+    0 12px 30px rgba(0, 0, 0, 0.4);
+  --green: #30d158;
+  --blue: #0a84ff;
+  --orange: #ff9f0a;
+  --red: #ff453a;
+  color-scheme: dark;
+}
+
+/* ---------- Space palette ----------
+   The galaxy has colours the rest of the app doesn't need to know about —
+   nebula violet, dust pink, the warm white of a star. They live here so any
+   surface can borrow them without a hard-coded hex. These are theme-independent
+   on purpose: even in light mode, the star chart is a window into the night. */
+:root {
+  --space-void: #000000;
+  --space-deep: #04030a;
+  --space-nebula: #5b4dd4;
+  --space-nebula-warm: #b45aff;
+  --space-dust: #ff9dc4;
+  --space-cyan: #4ad4ff;
+  --space-star: #dbe8ff;
+  --space-star-warm: #fff2d6;
+
+  /* Pre-mixed glows so a halo is never hand-typed twice. */
+  --glow-star: 0 0 12px rgba(140, 160, 255, 0.35);
+  --glow-star-soft: 0 0 24px rgba(140, 160, 255, 0.22);
+  --glow-nebula: 0 0 60px rgba(91, 77, 212, 0.28);
+}
+
+/* Expose the variables to Tailwind so classes like bg-surface and text-secondary work. */
+@theme inline {
+  --color-desktop: var(--desktop);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-elevated: var(--elevated);
+  --color-sidebar: var(--sidebar);
+  --color-text: var(--text);
+  --color-secondary: var(--text-secondary);
+  --color-tertiary: var(--text-tertiary);
+  --color-border: var(--border);
+  --color-window: var(--window-border);
+  --color-hover: var(--hover);
+  --color-selected: var(--selected);
+  --color-accent: var(--blue);
+  --color-good: var(--green);
+  --color-special: var(--blue);
+  --color-tough: var(--orange);
+  --color-alert: var(--red);
+  --shadow-card: var(--shadow);
+  --shadow-window: var(--window-shadow);
+  --radius-card: 14px;
+  --radius-control: 9px;
+  --font-sans: -apple-system, BlinkMacSystemFont, system-ui, "Inter", "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-serif: "New York", ui-serif, "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+}
+
+/* ---------- Type scale ---------- */
+/* Page title / big date. Fluid so it never wastes a phone screen. */
+@utility type-display {
+  font-size: clamp(1.75rem, 1.35rem + 1.6vw, 2.5rem);
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.028em;
+  text-wrap: balance;
+}
+
+/* Small uppercase label above a title or section. */
+@utility type-eyebrow {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+/* Long-form writing. Serif, generous leading, capped line length (~68 characters). */
+@utility type-journal {
+  font-family: var(--font-serif);
+  font-size: 1.1875rem;
+  line-height: 1.72;
+  letter-spacing: -0.003em;
+  max-width: 38rem;
+  text-wrap: pretty;
+  color: var(--text);
+}
+
+/* Supporting text and metadata. */
+@utility type-meta {
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  color: var(--text-secondary);
+}
+
+/* A quote set over the star chart: serif italic, warm, with a faint starlight halo.
+   The halo is the point — it lets the words sit on a photographic sky. */
+@utility type-star {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: clamp(1.5rem, 1.1rem + 1.4vw, 2rem);
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: var(--space-star);
+  text-shadow:
+    0 0 1px rgba(255, 255, 255, 0.4),
+    0 0 24px var(--glow-star);
+  text-wrap: pretty;
+}
+
+/* A quiet glow for a single word or icon that should feel lit from within. */
+@utility text-glow {
+  text-shadow:
+    0 0 1px rgba(255, 255, 255, 0.4),
+    var(--glow-star);
+}
+
+/* ---------- Base ---------- */
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--blue) 28%, transparent);
+}
+
+/* In the base layer so any element with Tailwind's focus:outline-none can opt out.
+   Buttons and links don't opt out, so keyboard users still see where they are. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+  }
+}
+
+/* On phones the app is the whole screen. From 1024px up it floats on a desktop backdrop. */
+.desktop-backdrop {
+  background: var(--bg);
+}
+
+@media (min-width: 1024px) {
+  body {
+    background: var(--desktop);
+  }
+
+  .desktop-backdrop {
+    background: linear-gradient(180deg, var(--desktop), var(--desktop-deep));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Page transition: a very short fade with a 3px rise. */
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-in {
+  animation: page-in 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* Thin, quiet scrollbars like macOS. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* ---------- Starfield ----------
+   A field of distant stars you can drop behind any dark surface to give it depth.
+   Opt in with .starfield, then set --starfield-opacity to taste. The dots are
+   deliberately uneven in size and warmth so the field reads as sky, not as dots. */
+@keyframes starfield-drift {
+  from {
+    background-position:
+      0 0,
+      40px 60px,
+      130px 270px,
+      200px 40px,
+      20px 200px,
+      300px 140px,
+      80px 220px;
+  }
+  to {
+    background-position:
+      -340px -340px,
+      -300px -280px,
+      -210px -70px,
+      -140px -380px,
+      -320px -140px,
+      -40px -200px,
+      -260px -120px;
+  }
+}
+
+.starfield {
+  --starfield-opacity: 0.6;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: var(--starfield-opacity);
+  background-repeat: repeat;
+  background-size: 340px 340px;
+  background-image:
+    radial-gradient(1.5px 1.5px at 20px 30px, rgba(255, 255, 255, 0.78), transparent),
+    radial-gradient(1px 1px at 120px 90px, rgba(220, 232, 255, 0.58), transparent),
+    radial-gradient(1.5px 1.5px at 60px 170px, rgba(255, 255, 255, 0.72), transparent),
+    radial-gradient(1px 1px at 220px 230px, rgba(220, 232, 255, 0.5), transparent),
+    radial-gradient(1.5px 1.5px at 270px 50px, rgba(255, 255, 255, 0.68), transparent),
+    radial-gradient(1px 1px at 300px 200px, rgba(255, 245, 220, 0.56), transparent),
+    radial-gradient(2px 2px at 60px 280px, rgba(190, 208, 255, 0.72), transparent);
+  animation: starfield-drift 260s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .starfield {
+    animation: none;
+  }
+}
+
+/* ---------- Ambient nebula ----------
+   Wrap a panel in .ambient-nebula to give it a soft, blurred halo of deep-space
+   violet. It only paints behind — the content stays crisp — so it is safe to use
+   on the quote panel, the star chart header, or a modal reading surface. */
+.ambient-nebula {
+  position: relative;
+  isolation: isolate;
+}
+
+.ambient-nebula::before {
+  content: "";
+  position: absolute;
+  inset: -60%;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(91, 77, 212, 0.18) 0%,
+    rgba(180, 90, 255, 0.08) 35%,
+    transparent 70%
+  );
+  filter: blur(36px);
+  opacity: 0.85;
+}
+
+/* The final dark palette. Kept at the very end so these values win — the sky is
+   truly black at night, and the chrome sits in it without fighting it. */
+:root[data-theme="dark"] {
+  --desktop: #000000;
+  --desktop-deep: #000000;
+  --bg: #000000;
+  --surface: #000000;
+  --elevated: #16181c;
+  --sidebar: #000000;
+  --text: #e7e9ea;
+  --text-secondary: #71767b;
+  --text-tertiary: #71767b;
+  --border: #2f3336;
+  --window-border: #2f3336;
+  --hover: rgba(231, 233, 234, 0.06);
+  --selected: rgba(231, 233, 234, 0.1);
+}
+
+/* ---------- Floating glass bottom navigation (phones only) ----------
+   Kept at the very end of the file so these values win over the earlier definitions.
+   In dark mode the shadow carries a whisper of nebula violet, so the nav feels lit
+   by the galaxy behind it rather than pinned on top. */
+
+:root,
+:root[data-theme="light"] {
+  --nav-glass: rgba(250, 250, 252, 0.6);
+  --nav-edge: rgba(0, 0, 0, 0.08);
+  --nav-highlight: rgba(255, 255, 255, 0.75);
+  --nav-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.28), 0 2px 6px rgba(0, 0, 0, 0.06);
+  --nav-active: rgba(0, 0, 0, 0.07);
+  --nav-active-highlight: rgba(255, 255, 255, 0.55);
+}
+
+:root[data-theme="dark"] {
+  --nav-glass: rgba(20, 20, 22, 0.72);
+  --nav-edge: rgba(255, 255, 255, 0.12);
+  --nav-highlight: rgba(255, 255, 255, 0.07);
+  --nav-shadow:
+    0 14px 34px -10px rgba(0, 0, 0, 0.9),
+    0 2px 8px rgba(0, 0, 0, 0.6),
+    0 0 40px rgba(91, 77, 212, 0.08);
+  --nav-active: rgba(255, 255, 255, 0.1);
+  --nav-active-highlight: rgba(255, 255, 255, 0.05);
+}
+
+.glass-nav {
+  background: var(--nav-glass);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  backdrop-filter: blur(24px) saturate(1.6);
+  box-shadow:
+    0 0 0 0.5px var(--nav-edge),
+    inset 0 1px 0 var(--nav-highlight),
+    var(--nav-shadow);
+}
+
+/* If the browser can't blur, fall back to a mostly solid surface so labels stay readable. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-nav {
+    background: color-mix(in srgb, var(--elevated) 94%, transparent);
+  }
+}
+
+.glass-nav-active {
+  background: var(--nav-active);
+  box-shadow: inset 0 0.5px 0 var(--nav-active-highlight);
+  transition:
+    transform 320ms cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 200ms ease;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glass-nav-active {
+    transition: none;
+  }
+}
+
+@keyframes track-check-draw {
+  from { stroke-dashoffset: 24; }
+  to { stroke-dashoffset: 0; }
+}
+.track-check-path { stroke-dasharray: 24; stroke-dashoffset: 24; }
+[aria-checked="true"] > svg > .track-check-path {
+  animation: track-check-draw 320ms cubic-bezier(0.65, 0, 0.35, 1) 60ms forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .track-check-path { animation: none !important; }
+  [aria-checked="true"] > svg > .track-check-path { stroke-dashoffset: 0; }
+}
+
+@keyframes quest-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.quest-rise {
+  animation: quest-rise 460ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: var(--d, 0ms);
+}

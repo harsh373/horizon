@@ -1,0 +1,261 @@
+/* The Map Room: a dark city street map with glowing pins.
+   Import this right after `@import "tailwindcss";` in index.css. */
+
+.map-room {
+  /* Force the entire Map Room to use dark mode variables, regardless of the app theme. 
+     A tactical map should always be dark, and this fixes the invisible black text. */
+  --bg: #020202;
+  --surface: #0a0a0c;
+  --elevated: #16181c;
+  --text: #f3f3f5;
+  --text-secondary: #a3a3aa;
+  --text-tertiary: #86868e;
+  --border: rgba(255, 255, 255, 0.1);
+  --window-border: rgba(255, 255, 255, 0.15);
+  --hover: rgba(255, 255, 255, 0.06);
+  --selected: rgba(255, 255, 255, 0.1);
+  
+  /* Panel & glass specifics */
+  --map-panel: rgba(10, 12, 18, 0.85);
+  --map-panel-edge: rgba(255, 255, 255, 0.12);
+  --map-vignette: rgba(0, 0, 0, 0.6);
+  --map-grain-invert: 1;
+
+  /* Force the glass nav to be dark inside the map room */
+  --nav-glass: rgba(10, 12, 18, 0.75);
+  --nav-edge: rgba(255, 255, 255, 0.12);
+  --nav-highlight: rgba(255, 255, 255, 0.05);
+  --nav-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.9), 0 2px 6px rgba(0, 0, 0, 0.6);
+  --nav-active: rgba(255, 255, 255, 0.1);
+  --nav-active-highlight: rgba(255, 255, 255, 0.05);
+
+  background: #020202;
+}
+
+/* ---------- Artwork ---------- */
+.mr-canvas {
+  display: block;
+  image-rendering: auto;
+}
+
+/* ---------- Atmosphere ---------- */
+.mr-vignette {
+  background: radial-gradient(
+    120% 100% at 50% 45%,
+    transparent 55%,
+    var(--map-vignette) 100%
+  );
+}
+.mr-grain {
+  opacity: 0.04;
+  filter: invert(var(--map-grain-invert));
+  background-size: 240px 240px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+}
+
+/* ---------- Landmarks: a thought is a glowing node ---------- */
+.mr-mark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  margin: -20px 0 0 -20px;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  pointer-events: auto;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  will-change: transform;
+}
+@media (pointer: coarse) {
+  .mr-mark { margin: -24px 0 0 -24px; width: 48px; height: 48px; }
+}
+.mr-mark:focus-visible { outline: 2px solid var(--blue); outline-offset: -5px; }
+
+.mr-mark-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff9a2e;
+  box-shadow:
+    0 0 5px 1px rgba(255, 140, 30, 0.85),
+    0 0 14px 3px rgba(255, 140, 30, 0.38),
+    0 0 30px 8px rgba(255, 140, 30, 0.16);
+  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 220ms ease;
+  animation: mr-appear 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.mr-mark-ring {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 150, 50, 0.45);
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 220ms ease, transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.mr-mark:hover .mr-mark-dot,
+.mr-mark:focus-visible .mr-mark-dot {
+  transform: scale(1.35);
+  background: #ffb35c;
+  box-shadow:
+    0 0 8px 2px rgba(255, 190, 110, 0.95),
+    0 0 22px 6px rgba(255, 140, 30, 0.6),
+    0 0 46px 14px rgba(255, 140, 30, 0.28);
+}
+/* The pin you have open turns blue, like the single blue dot on a city map. */
+.mr-mark[aria-pressed="true"] .mr-mark-dot {
+  transform: scale(1.6);
+  background: #4aa8ff;
+  box-shadow:
+    0 0 8px 2px rgba(150, 205, 255, 0.95),
+    0 0 24px 8px rgba(60, 150, 255, 0.6),
+    0 0 52px 16px rgba(60, 150, 255, 0.3);
+}
+.mr-mark[aria-pressed="true"] .mr-mark-ring { border-color: rgba(90, 170, 255, 0.55); }
+.mr-mark:hover .mr-mark-ring,
+.mr-mark:focus-visible .mr-mark-ring,
+.mr-mark[aria-pressed="true"] .mr-mark-ring {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.mr-mark-pulse {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 150, 50, 0.7);
+  opacity: 0;
+  pointer-events: none;
+  /* A slow, quiet breath. Pins are staggered below so they never pulse in unison. */
+  animation: mr-breathe 6s ease-out infinite;
+  animation-delay: -2s;
+}
+.mr-mark:nth-child(3n + 1) .mr-mark-pulse { animation-duration: 6.4s; animation-delay: -0.7s; }
+.mr-mark:nth-child(3n + 2) .mr-mark-pulse { animation-duration: 7.3s; animation-delay: -3.4s; }
+.mr-mark:nth-child(5n) .mr-mark-pulse { animation-duration: 8.1s; animation-delay: -5.2s; }
+.mr-mark[aria-pressed="true"] .mr-mark-pulse { border-color: rgba(90, 170, 255, 0.7); }
+.mr-mark[data-arrived="true"] .mr-mark-pulse { animation: mr-arrive 1.3s ease-out 2; }
+
+@keyframes mr-breathe {
+  0%   { transform: scale(0.45); opacity: 0; }
+  6%   { opacity: 0.45; }
+  55%  { transform: scale(2.3); opacity: 0; }
+  100% { transform: scale(2.3); opacity: 0; }
+}
+
+@keyframes mr-arrive {
+  0%   { transform: scale(0.4); opacity: 0.9; }
+  100% { transform: scale(2.8); opacity: 0; }
+}
+@keyframes mr-appear {
+  from { transform: scale(0); }
+  to   { transform: scale(1); }
+}
+
+.mr-mark-tip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% - 8px);
+  max-width: 220px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+  background: var(--map-panel);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  backdrop-filter: blur(16px) saturate(1.5);
+  box-shadow: 0 0 0 0.5px var(--map-panel-edge), 0 6px 18px -6px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  translate: -50% 4px;
+  pointer-events: none;
+  transition: opacity 160ms ease, translate 160ms ease;
+}
+@media (hover: hover) {
+  .mr-mark:hover .mr-mark-tip { opacity: 1; translate: -50% 0; }
+}
+.mr-mark:focus-visible .mr-mark-tip { opacity: 1; translate: -50% 0; }
+.mr-mark[aria-pressed="true"] .mr-mark-tip { opacity: 0; }
+
+/* ---------- Controls ---------- */
+.mr-ctl {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  color: var(--text-secondary);
+  border-radius: 9px;
+  transition: background-color 150ms ease, color 150ms ease, transform 120ms ease, opacity 150ms ease;
+}
+@media (max-width: 1023px) {
+  .mr-ctl { width: 44px; height: 44px; }
+}
+.mr-ctl:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+.mr-ctl:active:not(:disabled) { background: var(--selected); transform: scale(0.94); }
+.mr-ctl:disabled { opacity: 0.35; cursor: default; }
+
+/* ---------- Reading panel ---------- */
+.mr-panel {
+  background: var(--map-panel);
+  -webkit-backdrop-filter: blur(28px) saturate(1.6);
+  backdrop-filter: blur(28px) saturate(1.6);
+  box-shadow:
+    0 0 0 0.5px var(--map-panel-edge),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 24px 60px -18px rgba(0, 0, 0, 0.8);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .mr-panel, .mr-mark-tip { background: #16181c; }
+}
+
+.mr-panel-in { animation: mr-sheet-in 360ms cubic-bezier(0.32, 0.72, 0, 1) both; }
+@keyframes mr-sheet-in {
+  from { transform: translateY(24px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+@media (min-width: 1024px) {
+  .mr-panel-in { animation-name: mr-panel-in; }
+  @keyframes mr-panel-in {
+    from { transform: translateX(14px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+}
+
+.mr-fade-in { animation: mr-fade 200ms ease both; }
+@keyframes mr-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.mr-pop-in { animation: mr-pop 320ms cubic-bezier(0.2, 0.9, 0.25, 1) both; }
+@keyframes mr-pop {
+  from { transform: translateY(10px) scale(0.985); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+
+.mr-quote {
+  font-family: var(--font-serif);
+  letter-spacing: -0.012em;
+  text-wrap: pretty;
+  hanging-punctuation: first;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mr-mark-dot,
+  .mr-mark-ring,
+  .mr-mark-pulse,
+  .mr-panel-in,
+  .mr-fade-in,
+  .mr-pop-in { animation: none; transition: none; }
+  .mr-mark[data-arrived="true"] .mr-mark-pulse { animation: none; }
+}
