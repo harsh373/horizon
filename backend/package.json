@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@clerk/express": "^2.1.91",
     "bcryptjs": "^3.0.3",
     "cloudinary": "^2.11.0",
     "connect-mongo": "^6.0.0",

@@ -21,7 +21,7 @@ export interface QuoteFields {
 
 const quoteSchema = new Schema<QuoteFields>(
   {
-    clientKey: { type: String, maxlength: 64, unique: true, sparse: true },
+    clientKey: { type: String, maxlength: 64 },
     text: { type: String, required: true, maxlength: QUOTE_LIMITS.text },
     author: { type: String, default: "", maxlength: QUOTE_LIMITS.author },
     note: { type: String, default: "", maxlength: QUOTE_LIMITS.note },
@@ -29,6 +29,11 @@ const quoteSchema = new Schema<QuoteFields>(
     y: { type: Number, required: true, min: 0, max: WORLD_H },
   },
   { timestamps: true },
+);
+
+quoteSchema.index(
+  { userId: 1, clientKey: 1 },
+  { unique: true, partialFilterExpression: { clientKey: { $type: "string" } } },
 );
 
 export const Quote = model<QuoteFields>("Quote", quoteSchema);

@@ -37,7 +37,7 @@ const photoSchema = new Schema<JournalPhoto>({
 
 const journalEntrySchema = new Schema<JournalEntryFields>(
   {
-    date: { type: String, required: true, unique: true, match: /^\d{4}-\d{2}-\d{2}$/ },
+    date: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
     whatIDidToday: { type: String, default: "", maxlength: 20_000 },
     whatDrainedMe: { type: String, default: "", maxlength: 20_000 },
     tomorrowDifferent: { type: String, default: "", maxlength: 20_000 },
@@ -52,6 +52,9 @@ const journalEntrySchema = new Schema<JournalEntryFields>(
   },
   { timestamps: true },
 );
+
+// One entry per day, per user.
+journalEntrySchema.index({ userId: 1, date: 1 }, { unique: true });
 
 // A deleted day must stop counting as evidence for any memory or open loop.
 journalEntrySchema.post("findOneAndDelete", async function (doc: JournalEntryFields | null) {

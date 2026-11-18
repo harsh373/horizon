@@ -1,10 +1,12 @@
+import { getAuth } from "@clerk/express";
 import type { NextFunction, Request, Response } from "express";
-import { hasValidSession } from "./session";
+import { runAsUser } from "../config/userScope";
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
-  if (!hasValidSession(req)) {
+  const { userId } = getAuth(req);
+  if (!userId) {
     res.status(401).json({ message: "Not signed in" });
     return;
   }
-  next();
+  runAsUser(userId, () => next());
 }

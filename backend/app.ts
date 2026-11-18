@@ -1,10 +1,10 @@
-import cookieParser from "cookie-parser";
+import "./config/userScope";
+import { clerkMiddleware } from "@clerk/express";
 import cors from "cors";
 import express from "express";
 import type { NextFunction, Request, Response } from "express";
 import { connectDatabase } from "./config/db";
 import { env } from "./config/env";
-import authRoutes from "./routes/auth.routes";
 import healthRoutes from "./routes/health.routes";
 import insightsRoutes from "./routes/insights.routes";
 import journalRoutes from "./routes/journal.routes";
@@ -27,11 +27,16 @@ if (env.isProduction) app.set("trust proxy", 1);
 
 app.use(cors({ origin: env.clientOrigin, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
-app.use(cookieParser(env.sessionSecret));
+app.use(
+  clerkMiddleware({
+    publishableKey: env.clerkPublishableKey,
+    secretKey: env.clerkSecretKey,
+    authorizedParties: [env.clientOrigin],
+  }),
+);
 
-// Public routes — health check doesn't touch the database.
+// Public route: health check doesn't touch the database.
 app.use("/api/health", healthRoutes);
-app.use("/api/auth", authRoutes);
 
 // Everything below needs the database ready first. On a cold start this awaits
 // the connection; on a warm instance connectDatabase() returns immediately.

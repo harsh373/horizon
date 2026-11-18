@@ -1,24 +1,25 @@
-import axios, { isAxiosError } from "axios";
+import axios from "axios";
 
 export const UNAUTHORIZED_EVENT = "journal:unauthorized";
 
 // In production the browser talks only to the frontend's own domain. vercel.json forwards
-// /api to the backend, which keeps the login cookie first-party (works on every browser).
-// VITE_API_URL is used only during local development (npm run dev), never in a deployed build.
+// /api to the backend. VITE_API_URL is used only during local development.
 const backendOrigin = import.meta.env.DEV ? (import.meta.env.VITE_API_URL ?? "") : "";
+
+type TokenGetter = () => Promise<string | null>;
+let getToken: TokenGetter = async () => null;
+
+// AuthProvider calls this once so every request can attach a fresh Clerk token.
+export function setTokenGetter(getter: TokenGetter): void {
+  getToken = getter;
+}
 
 export const api = axios.create({
   baseURL: `${backendOrigin}/api`,
-  withCredentials: true,
 });
 
-api.interceptors.response.use(
-  (response) => response,
-  (error: unknown) => {
-    const isAuthCall = isAxiosError(error) && error.config?.url?.startsWith("/auth/");
-    if (isAxiosError(error) && error.response?.status === 401 && !isAuthCall) {
-      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
-    }
-    return Promise.reject(error);
-  },
-);
+api.interceptors.request.use(async (config) => {
+  const token = await getToken();
+  if (token) config.headers.set("Authorization", `Bearer ${token}`);
+  return config;
+});

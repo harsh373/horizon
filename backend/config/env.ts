@@ -9,8 +9,8 @@ export interface Env {
   isProduction: boolean;
   port: number;
   clientOrigin: string;
-  journalPassword: string;
-  sessionSecret: string;
+  clerkPublishableKey: string;
+  clerkSecretKey: string;
   mongodbUri: string;
   cloudinaryCloudName: string;
   cloudinaryApiKey: string;
@@ -37,18 +37,6 @@ function parsePort(value: string | undefined): number {
   return port;
 }
 
-// The server refuses to start with a missing or placeholder secret,
-// so a forgotten .env can never leave the journal open or guessable.
-function requireSecret(name: string, value: string | undefined, minLength: number): string {
-  if (!value || value.startsWith("change-me")) {
-    throw new Error(`${name} is not set. Add a real value to backend/.env.`);
-  }
-  if (value.length < minLength) {
-    throw new Error(`${name} must be at least ${minLength} characters.`);
-  }
-  return value;
-}
-
 function requireValue(name: string, value: string | undefined): string {
   if (!value || value.trim() === "") {
     throw new Error(`${name} is not set. Add it to backend/.env.`);
@@ -69,8 +57,8 @@ export const env: Env = {
   isProduction: nodeEnv === "production",
   port: parsePort(process.env.PORT),
   clientOrigin: process.env.CLIENT_ORIGIN ?? "http://localhost:5173",
-  journalPassword: requireSecret("JOURNAL_PASSWORD", process.env.JOURNAL_PASSWORD, 8),
-  sessionSecret: requireSecret("SESSION_SECRET", process.env.SESSION_SECRET, 32),
+  clerkPublishableKey: requireValue("CLERK_PUBLISHABLE_KEY", process.env.CLERK_PUBLISHABLE_KEY),
+  clerkSecretKey: requireValue("CLERK_SECRET_KEY", process.env.CLERK_SECRET_KEY),
   mongodbUri: requireValue("MONGODB_URI", process.env.MONGODB_URI),
   cloudinaryCloudName: requireValue("CLOUDINARY_CLOUD_NAME", process.env.CLOUDINARY_CLOUD_NAME),
   cloudinaryApiKey: requireValue("CLOUDINARY_API_KEY", process.env.CLOUDINARY_API_KEY),

@@ -6,7 +6,7 @@ export interface TodayItemFields {
 }
 
 export interface TodayPlanFields {
-  // A plain "YYYY-MM-DD" journal day key — same 4 AM rollover rule as JournalEntry.
+  // A plain "YYYY-MM-DD" journal day key, same 4 AM rollover rule as JournalEntry.
   date: string;
   items: TodayItemFields[];
   createdAt: Date;
@@ -20,10 +20,12 @@ const todayItemSchema = new Schema<TodayItemFields>({
 
 const todayPlanSchema = new Schema<TodayPlanFields>(
   {
-    date: { type: String, required: true, unique: true, match: /^\d{4}-\d{2}-\d{2}$/ },
+    date: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
     items: { type: [todayItemSchema], default: [] },
   },
   { timestamps: true },
 );
+
+todayPlanSchema.index({ userId: 1, date: 1 }, { unique: true });
 
 export const TodayPlan = model<TodayPlanFields>("TodayPlan", todayPlanSchema);

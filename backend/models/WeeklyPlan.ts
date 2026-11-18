@@ -6,8 +6,7 @@ export interface WeeklyItemFields {
 }
 
 export interface WeeklyPlanFields {
-  // The Monday of the week, as "YYYY-MM-DD". This IS the week's identity —
-  // one plan per Monday, enforced by the unique index below.
+  // The Monday of the week, as "YYYY-MM-DD". One plan per Monday, per user.
   weekStart: string;
   items: WeeklyItemFields[];
   createdAt: Date;
@@ -21,10 +20,12 @@ const weeklyItemSchema = new Schema<WeeklyItemFields>({
 
 const weeklyPlanSchema = new Schema<WeeklyPlanFields>(
   {
-    weekStart: { type: String, required: true, unique: true, match: /^\d{4}-\d{2}-\d{2}$/ },
+    weekStart: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
     items: { type: [weeklyItemSchema], default: [] },
   },
   { timestamps: true },
 );
+
+weeklyPlanSchema.index({ userId: 1, weekStart: 1 }, { unique: true });
 
 export const WeeklyPlan = model<WeeklyPlanFields>("WeeklyPlan", weeklyPlanSchema);
