@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AppShell from "./components/AppShell";
 import { AuthProvider, useAuth } from "./components/AuthProvider";
 import { MoodProvider } from "./components/MoodProvider";
+import { VaultProvider } from "./components/VaultProvider";
 import { useNoAutofill } from "./config/useNoAutofill";
 import Archive from "./pages/Archive";
 import Gate from "./pages/Gate";
@@ -49,37 +50,39 @@ function AppRoutes() {
     );
 
   return (
-    <MoodProvider>
-      <Routes>
-        <Route element={<AppShell />}>
-          <Route index element={<Journal />} />
-          <Route path="day/:date" element={<Journal />} />
-          <Route path="archive" element={<Archive />} />
-          <Route path="weekly" element={<Weekly />} />
-          <Route path="now" element={<Now />} />
-          <Route path="now/archive" element={<NowArchive />} />
-          <Route path="scenarios" element={<Placeholder title="Scenarios" />} />
-          <Route path="side-quests" element={<SideQuests />} />
-          <Route path="tracks" element={<Tracks />} />
-          <Route path="tracks/:id" element={<TrackDetail />} />
-          <Route path="side-quests/:id" element={<SideQuestDetail />} />
-          <Route path="photos" element={<Photos />} />
+    <VaultProvider>
+      <MoodProvider>
+        <Routes>
+          <Route element={<AppShell />}>
+            <Route index element={<Journal />} />
+            <Route path="day/:date" element={<Journal />} />
+            <Route path="archive" element={<Archive />} />
+            <Route path="weekly" element={<Weekly />} />
+            <Route path="now" element={<Now />} />
+            <Route path="now/archive" element={<NowArchive />} />
+            <Route path="scenarios" element={<Placeholder title="Scenarios" />} />
+            <Route path="side-quests" element={<SideQuests />} />
+            <Route path="tracks" element={<Tracks />} />
+            <Route path="tracks/:id" element={<TrackDetail />} />
+            <Route path="side-quests/:id" element={<SideQuestDetail />} />
+            <Route path="photos" element={<Photos />} />
             <Route path="observatory" element={<Observatory />} />
             <Route path="map-room" element={<MapRoom />} />
-          <Route path="stats" element={<Placeholder title="Stats" />} />
-          <Route path="search" element={<Placeholder title="Search" />} />
-          <Route path="insights" element={<Insights />} />
-          <Route path="/circle" element={<Circle />} />
-          <Route path="insights/memory" element={<InsightsMemory />} />
-          <Route path="insights/open-loops" element={<InsightsOpenLoops />} />
-          <Route path="settings" element={<Placeholder title="Settings" />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="stats" element={<Placeholder title="Stats" />} />
+            <Route path="search" element={<Placeholder title="Search" />} />
+            <Route path="insights" element={<Insights />} />
+            <Route path="/circle" element={<Circle />} />
+            <Route path="insights/memory" element={<InsightsMemory />} />
+            <Route path="insights/open-loops" element={<InsightsOpenLoops />} />
+            <Route path="settings" element={<Placeholder title="Settings" />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
 
-          <Route path="thoughts" element={<Thoughts />} />
-          <Route path="thoughts/:id" element={<ThoughtDetail />} />
-        </Route>
-      </Routes>
-    </MoodProvider>
+            <Route path="thoughts" element={<Thoughts />} />
+            <Route path="thoughts/:id" element={<ThoughtDetail />} />
+          </Route>
+        </Routes>
+      </MoodProvider>
+    </VaultProvider>
   );
 }
 

@@ -1,28 +1,30 @@
-import { Schema, Types, model } from "mongoose";
+import { Schema, model } from "mongoose";
+import type { StoredPayload } from "../utility/payload";
+import { payloadSchema } from "./payloadSchema";
 
-// One time you showed up for a track: a date, an optional note, an optional amount.
+// One time you showed up for a track. The note and amount are inside the payload.
+// trackId (the track's recordId) and date stay readable so the server can fetch a month of logs.
 export interface TrackLogFields {
-  trackId: Types.ObjectId;
-  // A plain "YYYY-MM-DD" journal day.
+  recordId: string;
+  trackId: string;
   date: string;
-  note: string;
-  amount: number | null;
+  payload: StoredPayload;
   createdAt: Date;
   updatedAt: Date;
 }
 
 const trackLogSchema = new Schema<TrackLogFields>(
   {
-    trackId: { type: Schema.Types.ObjectId, ref: "Track", required: true, index: true },
+    recordId: { type: String, required: true, immutable: true },
+    trackId: { type: String, required: true },
     date: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
-    note: { type: String, default: "", maxlength: 5_000 },
-    amount: { type: Number, min: 0, max: 1_000_000, default: null },
+    payload: { type: payloadSchema, required: true },
   },
   { timestamps: true },
 );
 
-// Month views and "what did I log on this day" both filter by date.
-trackLogSchema.index({ trackId: 1, date: 1 });
-trackLogSchema.index({ date: 1 });
+trackLogSchema.index({ userId: 1, recordId: 1 }, { unique: true });
+trackLogSchema.index({ userId: 1, trackId: 1, date: 1 });
+trackLogSchema.index({ userId: 1, date: 1 });
 
 export const TrackLog = model<TrackLogFields>("TrackLog", trackLogSchema);

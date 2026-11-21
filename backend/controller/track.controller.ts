@@ -1,124 +1,55 @@
 import type { Request, Response } from "express";
-import { isValidObjectId } from "mongoose";
-import type { HydratedDocument } from "mongoose";
-import { TRACK_ICONS, TRACK_STATUSES, Track } from "../models/Track";
-import type { TrackFields, TrackIcon, TrackStatus } from "../models/Track";
+import { Track } from "../models/Track";
 import { TrackLog } from "../models/TrackLog";
-import type { TrackLogFields } from "../models/TrackLog";
 import { isValidDayKey, isValidMonthKey } from "../utility/dayKey";
+import { isRecordId, parsePayload, plainPayload } from "../utility/payload";
+import type { StoredPayload } from "../utility/payload";
 
-const TEXT_LIMITS = { title: 60, subtitle: 160, unit: 20 } as const;
-type TextField = keyof typeof TEXT_LIMITS;
-const TEXT_FIELDS = Object.keys(TEXT_LIMITS) as TextField[];
+// Limits apply to the encrypted text, which is longer than the original.
+const TRACK_PAYLOAD_MAX = 8_000;
+const LOG_PAYLOAD_MAX = 40_000;
 
-const NOTE_LIMIT = 5_000;
-const AMOUNT_MAX = 1_000_000;
-
-type TrackPatch = Partial<Record<TextField, string>> & { icon?: TrackIcon; status?: TrackStatus };
-type LogPatch = { date?: string; note?: string; amount?: number | null };
-
-function isIcon(value: string): value is TrackIcon {
-  return (TRACK_ICONS as readonly string[]).includes(value);
-}
-
-function isStatus(value: string): value is TrackStatus {
-  return (TRACK_STATUSES as readonly string[]).includes(value);
+function bodyOf(req: Request): Record<string, unknown> {
+  return typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
 }
 
 function monthRange(month: string) {
   return { $gte: `${month}-01`, $lte: `${month}-31` };
 }
 
-function parseTrackPatch(body: unknown): { patch: TrackPatch } | { error: string } {
-  if (typeof body !== "object" || body === null) return { error: "Send the track as a JSON object" };
-  const input = body as Record<string, unknown>;
-  const patch: TrackPatch = {};
-
-  for (const field of TEXT_FIELDS) {
-    const value = input[field];
-    if (value === undefined) continue;
-    if (typeof value !== "string") return { error: `${field} must be text` };
-    const trimmed = value.trim();
-    if (field === "title" && trimmed === "") return { error: "Title can't be empty" };
-    if (trimmed.length > TEXT_LIMITS[field]) return { error: `${field} is too long` };
-    patch[field] = trimmed;
-  }
-
-  if (input.icon !== undefined) {
-    if (typeof input.icon !== "string" || !isIcon(input.icon)) return { error: "icon is not valid" };
-    patch.icon = input.icon;
-  }
-
-  if (input.status !== undefined) {
-    if (typeof input.status !== "string" || !isStatus(input.status)) return { error: "status is not valid" };
-    patch.status = input.status;
-  }
-
-  if (Object.keys(patch).length === 0) return { error: "Nothing to save" };
-  return { patch };
-}
-
-function parseLogPatch(body: unknown): { patch: LogPatch } | { error: string } {
-  if (typeof body !== "object" || body === null) return { error: "Send the log as a JSON object" };
-  const input = body as Record<string, unknown>;
-  const patch: LogPatch = {};
-
-  if (input.date !== undefined) {
-    if (!isValidDayKey(input.date)) return { error: "date must look like 2026-09-23" };
-    patch.date = input.date;
-  }
-
-  if (input.note !== undefined) {
-    if (typeof input.note !== "string") return { error: "note must be text" };
-    if (input.note.length > NOTE_LIMIT) return { error: "note is too long" };
-    patch.note = input.note;
-  }
-
-  if (input.amount !== undefined) {
-    if (input.amount === null) {
-      patch.amount = null;
-    } else if (typeof input.amount === "number" && Number.isFinite(input.amount)) {
-      if (input.amount < 0 || input.amount > AMOUNT_MAX) return { error: "amount is out of range" };
-      patch.amount = input.amount;
-    } else {
-      return { error: "amount must be a number" };
-    }
-  }
-
-  if (Object.keys(patch).length === 0) return { error: "Nothing to save" };
-  return { patch };
-}
-
-function toTrackResponse(doc: HydratedDocument<TrackFields>) {
+function trackEnvelope(doc: { recordId: string; payload: unknown; createdAt: Date; updatedAt: Date }) {
   return {
-    id: doc.id as string,
-    title: doc.title,
-    subtitle: doc.subtitle,
-    icon: doc.icon,
-    unit: doc.unit,
-    status: doc.status,
+    id: doc.recordId,
+    payload: plainPayload(doc.payload as StoredPayload),
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };
 }
 
-function toLogResponse(doc: HydratedDocument<TrackLogFields>) {
+function logEnvelope(doc: {
+  recordId: string;
+  trackId: string;
+  date: string;
+  payload: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
   return {
-    id: doc.id as string,
-    trackId: String(doc.trackId),
+    id: doc.recordId,
+    trackId: doc.trackId,
     date: doc.date,
-    note: doc.note,
-    amount: doc.amount,
+    payload: plainPayload(doc.payload as StoredPayload),
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };
 }
 
-async function findTrack(id: string) {
-  return isValidObjectId(id) ? Track.findById(id) : null;
+async function trackExists(id: string): Promise<boolean> {
+  return (await Track.exists({ recordId: id })) !== null;
 }
 
-// GET /api/tracks?month=2026-09  ->  every track, with the days you showed up that month.
+// GET /api/tracks?month=2026-09  ->  every track, plus that month's logs, all encrypted.
+// The browser decrypts them and works out the days and totals.
 export async function listTracks(req: Request, res: Response): Promise<void> {
   const month = req.query.month;
   if (!isValidMonthKey(month)) {
@@ -127,88 +58,83 @@ export async function listTracks(req: Request, res: Response): Promise<void> {
   }
 
   const [tracks, logs] = await Promise.all([
-    Track.find(),
-    TrackLog.find({ date: monthRange(month) }).select("trackId date amount"),
+    Track.find().sort({ createdAt: 1 }).select("recordId payload createdAt updatedAt"),
+    TrackLog.find({ date: monthRange(month) }).select("recordId trackId date payload createdAt updatedAt"),
   ]);
 
-  const stats = new Map<string, { days: Set<string>; total: number }>();
-  for (const log of logs) {
-    const key = String(log.trackId);
-    const entry = stats.get(key) ?? { days: new Set<string>(), total: 0 };
-    entry.days.add(log.date);
-    entry.total += log.amount ?? 0;
-    stats.set(key, entry);
-  }
-
-  const order: Record<TrackStatus, number> = { active: 0, paused: 1, archived: 2 };
-  const sorted = [...tracks].sort(
-    (a, b) => order[a.status] - order[b.status] || a.createdAt.getTime() - b.createdAt.getTime(),
-  );
-
-  res.status(200).json({
-    tracks: sorted.map((track) => {
-      const stat = stats.get(track.id as string);
-      return {
-        ...toTrackResponse(track),
-        monthDays: stat ? [...stat.days].sort() : [],
-        monthTotal: stat ? stat.total : 0,
-      };
-    }),
-  });
+  res.status(200).json({ tracks: tracks.map(trackEnvelope), logs: logs.map(logEnvelope) });
 }
 
-// POST /api/tracks  ->  a fresh "Untitled track" you then rename.
-export async function createTrack(_req: Request, res: Response): Promise<void> {
-  const doc = await Track.create({});
-  res.status(201).json({ track: toTrackResponse(doc) });
+// POST /api/tracks  { recordId, payload }
+export async function createTrack(req: Request, res: Response): Promise<void> {
+  const input = bodyOf(req);
+  const payload = parsePayload(input.payload, TRACK_PAYLOAD_MAX);
+  if (!isRecordId(input.recordId) || !payload) {
+    res.status(400).json({ message: "Send recordId and payload" });
+    return;
+  }
+
+  try {
+    const doc = await Track.create({ recordId: input.recordId, payload });
+    res.status(201).json({ track: { id: doc.recordId, createdAt: doc.createdAt, updatedAt: doc.updatedAt } });
+  } catch (error) {
+    if ((error as { code?: number }).code === 11000) {
+      res.status(409).json({ message: "That track already exists" });
+      return;
+    }
+    throw error;
+  }
 }
 
 // GET /api/tracks/:id
 export async function getTrack(req: Request, res: Response): Promise<void> {
-  const doc = await findTrack(req.params.id as string);
+  const id = req.params.id;
+  if (!isRecordId(id)) {
+    res.status(404).json({ message: "Track not found" });
+    return;
+  }
+  const doc = await Track.findOne({ recordId: id });
   if (!doc) {
     res.status(404).json({ message: "Track not found" });
     return;
   }
-  res.status(200).json({ track: toTrackResponse(doc) });
+  res.status(200).json({ track: trackEnvelope(doc) });
 }
 
-// PUT /api/tracks/:id
+// PUT /api/tracks/:id  { payload }
 export async function updateTrack(req: Request, res: Response): Promise<void> {
-  const id = req.params.id as string;
-  if (!isValidObjectId(id)) {
+  const id = req.params.id;
+  if (!isRecordId(id)) {
     res.status(404).json({ message: "Track not found" });
     return;
   }
-
-  const parsed = parseTrackPatch(req.body);
-  if ("error" in parsed) {
-    res.status(400).json({ message: parsed.error });
+  const payload = parsePayload(bodyOf(req).payload, TRACK_PAYLOAD_MAX);
+  if (!payload) {
+    res.status(400).json({ message: "payload is not valid" });
     return;
   }
 
-  const doc = await Track.findByIdAndUpdate(
-    id,
-    { $set: parsed.patch },
-    { returnDocument: "after", runValidators: true },
-  );
+  const doc = await Track.findOneAndUpdate({ recordId: id }, { $set: { payload } }, { returnDocument: "after" });
   if (!doc) {
     res.status(404).json({ message: "Track not found" });
     return;
   }
-  res.status(200).json({ track: toTrackResponse(doc) });
+  res.status(200).json({ track: { id: doc.recordId, createdAt: doc.createdAt, updatedAt: doc.updatedAt } });
 }
 
 // DELETE /api/tracks/:id  ->  removes the track and every log inside it.
 export async function deleteTrack(req: Request, res: Response): Promise<void> {
-  const doc = await findTrack(req.params.id as string);
+  const id = req.params.id;
+  if (!isRecordId(id)) {
+    res.status(404).json({ message: "Track not found" });
+    return;
+  }
+  const doc = await Track.findOneAndDelete({ recordId: id });
   if (!doc) {
     res.status(404).json({ message: "Track not found" });
     return;
   }
-
-  await TrackLog.deleteMany({ trackId: doc._id });
-  await doc.deleteOne();
+  await TrackLog.deleteMany({ trackId: id });
   res.status(200).json({ deleted: true });
 }
 
@@ -219,84 +145,81 @@ export async function listLogs(req: Request, res: Response): Promise<void> {
     res.status(400).json({ message: "month is required, like 2026-09" });
     return;
   }
-
-  const track = await findTrack(req.params.id as string);
-  if (!track) {
+  const id = req.params.id;
+  if (!isRecordId(id) || !(await trackExists(id))) {
     res.status(404).json({ message: "Track not found" });
     return;
   }
 
-  const logs = await TrackLog.find({ trackId: track._id, date: monthRange(month) }).sort({
-    date: -1,
-    createdAt: -1,
-  });
-  res.status(200).json({ logs: logs.map(toLogResponse) });
+  const logs = await TrackLog.find({ trackId: id, date: monthRange(month) }).sort({ date: -1, createdAt: -1 });
+  res.status(200).json({ logs: logs.map(logEnvelope) });
 }
 
-// POST /api/tracks/:id/logs  body: { date, note?, amount? }
+// POST /api/tracks/:id/logs  { recordId, date, payload }
 export async function createLog(req: Request, res: Response): Promise<void> {
-  const track = await findTrack(req.params.id as string);
-  if (!track) {
+  const id = req.params.id;
+  if (!isRecordId(id) || !(await trackExists(id))) {
     res.status(404).json({ message: "Track not found" });
     return;
   }
 
-  const parsed = parseLogPatch(req.body);
-  if ("error" in parsed) {
-    res.status(400).json({ message: parsed.error });
-    return;
-  }
-  if (!parsed.patch.date) {
-    res.status(400).json({ message: "date is required" });
+  const input = bodyOf(req);
+  const payload = parsePayload(input.payload, LOG_PAYLOAD_MAX);
+  if (!isRecordId(input.recordId) || !isValidDayKey(input.date) || !payload) {
+    res.status(400).json({ message: "Send recordId, date and payload" });
     return;
   }
 
-  const doc = await TrackLog.create({
-    trackId: track._id,
-    date: parsed.patch.date,
-    note: parsed.patch.note ?? "",
-    amount: parsed.patch.amount ?? null,
-  });
-  res.status(201).json({ log: toLogResponse(doc) });
+  try {
+    const doc = await TrackLog.create({ recordId: input.recordId, trackId: id, date: input.date, payload });
+    res.status(201).json({ log: logEnvelope(doc) });
+  } catch (error) {
+    if ((error as { code?: number }).code === 11000) {
+      res.status(409).json({ message: "That log already exists" });
+      return;
+    }
+    throw error;
+  }
 }
 
-// PUT /api/tracks/:id/logs/:logId
+// PUT /api/tracks/:id/logs/:logId  { date, payload }
 export async function updateLog(req: Request, res: Response): Promise<void> {
-  const trackId = req.params.id as string;
-  const logId = req.params.logId as string;
-  if (!isValidObjectId(trackId) || !isValidObjectId(logId)) {
+  const id = req.params.id;
+  const logId = req.params.logId;
+  if (!isRecordId(id) || !isRecordId(logId)) {
     res.status(404).json({ message: "Log not found" });
     return;
   }
 
-  const parsed = parseLogPatch(req.body);
-  if ("error" in parsed) {
-    res.status(400).json({ message: parsed.error });
+  const input = bodyOf(req);
+  const payload = parsePayload(input.payload, LOG_PAYLOAD_MAX);
+  if (!isValidDayKey(input.date) || !payload) {
+    res.status(400).json({ message: "Send date and payload" });
     return;
   }
 
   const doc = await TrackLog.findOneAndUpdate(
-    { _id: logId, trackId },
-    { $set: parsed.patch },
-    { returnDocument: "after", runValidators: true },
+    { recordId: logId, trackId: id },
+    { $set: { date: input.date, payload } },
+    { returnDocument: "after" },
   );
   if (!doc) {
     res.status(404).json({ message: "Log not found" });
     return;
   }
-  res.status(200).json({ log: toLogResponse(doc) });
+  res.status(200).json({ log: logEnvelope(doc) });
 }
 
 // DELETE /api/tracks/:id/logs/:logId
 export async function deleteLog(req: Request, res: Response): Promise<void> {
-  const trackId = req.params.id as string;
-  const logId = req.params.logId as string;
-  if (!isValidObjectId(trackId) || !isValidObjectId(logId)) {
+  const id = req.params.id;
+  const logId = req.params.logId;
+  if (!isRecordId(id) || !isRecordId(logId)) {
     res.status(404).json({ message: "Log not found" });
     return;
   }
 
-  const doc = await TrackLog.findOneAndDelete({ _id: logId, trackId });
+  const doc = await TrackLog.findOneAndDelete({ recordId: logId, trackId: id });
   if (!doc) {
     res.status(404).json({ message: "Log not found" });
     return;
@@ -304,8 +227,7 @@ export async function deleteLog(req: Request, res: Response): Promise<void> {
   res.status(200).json({ deleted: true });
 }
 
-// GET /api/tracks/logs?date=2026-09-23  ->  everything logged on one day, across all tracks.
-// The journal page uses this to show "what I did on my tracks today".
+// GET /api/tracks/logs?date=2026-09-23  ->  everything logged on one day, plus the tracks those logs belong to.
 export async function listLogsForDay(req: Request, res: Response): Promise<void> {
   const date = req.query.date;
   if (!isValidDayKey(date)) {
@@ -314,20 +236,8 @@ export async function listLogsForDay(req: Request, res: Response): Promise<void>
   }
 
   const logs = await TrackLog.find({ date }).sort({ createdAt: 1 });
-  const trackIds = [...new Set(logs.map((log) => String(log.trackId)))];
-  const tracks = await Track.find({ _id: { $in: trackIds } });
-  const byId = new Map(tracks.map((track) => [track.id as string, track]));
+  const trackIds = [...new Set(logs.map((log) => log.trackId))];
+  const tracks = trackIds.length > 0 ? await Track.find({ recordId: { $in: trackIds } }) : [];
 
-  const result = logs.flatMap((log) => {
-    const track = byId.get(String(log.trackId));
-    if (!track) return [];
-    return [
-      {
-        ...toLogResponse(log),
-        track: { id: track.id as string, title: track.title, icon: track.icon, unit: track.unit },
-      },
-    ];
-  });
-
-  res.status(200).json({ logs: result });
+  res.status(200).json({ logs: logs.map(logEnvelope), tracks: tracks.map(trackEnvelope) });
 }

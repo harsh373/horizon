@@ -1,27 +1,20 @@
 import { Schema, model } from "mongoose";
-
-export interface WeeklyItemFields {
-  text: string;
-  completed: boolean;
-}
+import type { StoredPayload } from "../utility/payload";
+import { payloadSchema } from "./payloadSchema";
 
 export interface WeeklyPlanFields {
-  // The Monday of the week, as "YYYY-MM-DD". One plan per Monday, per user.
+  // The Monday of the week, as "YYYY-MM-DD". It is also the record id bound into the ciphertext.
   weekStart: string;
-  items: WeeklyItemFields[];
+  // {items: [{id, text, completed}]}, encrypted. The order of the list is the order of the items.
+  payload: StoredPayload;
   createdAt: Date;
   updatedAt: Date;
 }
 
-const weeklyItemSchema = new Schema<WeeklyItemFields>({
-  text: { type: String, required: true, trim: true, maxlength: 500 },
-  completed: { type: Boolean, default: false },
-});
-
 const weeklyPlanSchema = new Schema<WeeklyPlanFields>(
   {
     weekStart: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
-    items: { type: [weeklyItemSchema], default: [] },
+    payload: { type: payloadSchema, required: true },
   },
   { timestamps: true },
 );

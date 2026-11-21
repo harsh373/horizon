@@ -1,11 +1,9 @@
 import { Router } from "express";
-import { addTodayItem, deleteTodayItem, getTodayPlan, updateTodayItem } from "../controller/today.controller";
+import { getTodayPlan, saveTodayPlan } from "../controller/today.controller";
 
 const router = Router();
 
 router.get("/:date", getTodayPlan);
-router.post("/:date/items", addTodayItem);
-router.put("/:date/items/:itemId", updateTodayItem);
-router.delete("/:date/items/:itemId", deleteTodayItem);
+router.put("/:date", saveTodayPlan);
 
 export default router;

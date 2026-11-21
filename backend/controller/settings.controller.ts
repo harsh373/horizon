@@ -1,52 +1,43 @@
 import type { Request, Response } from "express";
 import { Settings, SINGLETON_KEY } from "../models/Settings";
-import { isValidDayKey } from "../utility/dayKey";
+import { parsePayload, plainPayload } from "../utility/payload";
+import type { StoredPayload } from "../utility/payload";
 
-interface SettingsResponse {
-  countdownDate: string;
-  countdownLabel: string;
-}
+const SETTINGS_PAYLOAD_MAX = 8_000;
 
-function toResponse(doc: { countdownDate: string; countdownLabel: string }): SettingsResponse {
-  return { countdownDate: doc.countdownDate, countdownLabel: doc.countdownLabel };
-}
-
-// GET /api/settings
+// GET /api/settings  ->  the encrypted settings, or { settings: null } if none were saved yet.
 export async function getSettings(_req: Request, res: Response): Promise<void> {
   const doc = await Settings.findOne({ key: SINGLETON_KEY });
-  res.status(200).json({ settings: doc ? toResponse(doc) : { countdownDate: "", countdownLabel: "" } });
+  res.status(200).json({ settings: doc ? { payload: plainPayload(doc.payload as StoredPayload) } : null });
 }
 
-// PUT /api/settings
-export async function saveSettings(req: Request, res: Response): Promise<void> {
-  const body = req.body as { countdownDate?: unknown; countdownLabel?: unknown };
-  const patch: Partial<SettingsResponse> = {};
-
-  if (body.countdownDate !== undefined) {
-    if (typeof body.countdownDate !== "string" || (body.countdownDate !== "" && !isValidDayKey(body.countdownDate))) {
-      res.status(400).json({ message: "countdownDate must look like 2026-09-23, or be empty" });
-      return;
-    }
-    patch.countdownDate = body.countdownDate;
-  }
-
-  if (body.countdownLabel !== undefined) {
-    if (typeof body.countdownLabel !== "string" || body.countdownLabel.length > 120) {
-      res.status(400).json({ message: "countdownLabel is invalid" });
-      return;
-    }
-    patch.countdownLabel = body.countdownLabel.trim();
-  }
-
-  const doc = await Settings.findOneAndUpdate(
+async function upsertSettings(payload: StoredPayload) {
+  return Settings.findOneAndUpdate(
     { key: SINGLETON_KEY },
-    { $set: patch },
+    { $set: { payload } },
     { upsert: true, returnDocument: "after", runValidators: true, setDefaultsOnInsert: true },
   );
+}
 
+// PUT /api/settings  { payload }
+export async function saveSettings(req: Request, res: Response): Promise<void> {
+  const body = typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
+  const payload = parsePayload(body.payload, SETTINGS_PAYLOAD_MAX);
+  if (!payload) {
+    res.status(400).json({ message: "payload is not valid" });
+    return;
+  }
+
+  let doc;
+  try {
+    doc = await upsertSettings(payload);
+  } catch (error) {
+    if ((error as { code?: number }).code !== 11000) throw error;
+    doc = await upsertSettings(payload);
+  }
   if (!doc) {
     res.status(500).json({ message: "Could not save settings" });
     return;
   }
-  res.status(200).json({ settings: toResponse(doc) });
+  res.status(200).json({ ok: true });
 }

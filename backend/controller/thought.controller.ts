@@ -1,26 +1,13 @@
 import type { Request, Response } from "express";
-import type { HydratedDocument } from "mongoose";
-import { isValidObjectId } from "mongoose";
-import { THOUGHT_BODY_LIMIT, THOUGHT_TITLE_LIMIT, Thought } from "../models/Thought";
-import type { ThoughtFields } from "../models/Thought";
+import { currentUserId } from "../config/userScope";
+import { BODY_PAYLOAD_MAX, TITLE_PAYLOAD_MAX, Thought } from "../models/Thought";
+import { isRecordId, parsePayload, plainPayload } from "../utility/payload";
+import type { StoredPayload } from "../utility/payload";
 
 const MAX_REORDER = 5000;
 
-function parseTitle(value: unknown): { title: string } | { error: string } {
-  if (typeof value !== "string") return { error: "title must be text" };
-  const title = value.replace(/\s+/g, " ").trim();
-  if (title.length > THOUGHT_TITLE_LIMIT) return { error: "title is too long" };
-  return { title };
-}
-
-function parseBody(value: unknown): { body: string } | { error: string } {
-  if (typeof value !== "string") return { error: "body must be text" };
-  if (value.length > THOUGHT_BODY_LIMIT) return { error: "body is too long" };
-  return { body: value };
-}
-
-function toFull(doc: HydratedDocument<ThoughtFields>) {
-  return { id: doc.id as string, title: doc.title, body: doc.body };
+function bodyOf(req: Request): Record<string, unknown> {
+  return typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
 }
 
 // New thoughts go to the top of the collection.
@@ -29,88 +16,113 @@ async function topOrder(): Promise<number> {
   return first ? first.order - 1 : 0;
 }
 
-// GET /api/thoughts  ->  titles only, in order. Bodies are loaded one at a time, when a thought is opened.
-// Thoughts that are completely empty (an abandoned draft) are left out.
+// GET /api/thoughts  ->  encrypted titles only, in order. The browser decrypts them and hides empty drafts.
 export async function listThoughts(_req: Request, res: Response): Promise<void> {
-  const docs = await Thought.find({ $or: [{ title: { $ne: "" } }, { body: { $ne: "" } }] })
+  const docs = await Thought.find({ recordId: { $exists: true } })
     .sort({ order: 1, createdAt: -1 })
-    .select("title");
-  res.status(200).json({ thoughts: docs.map((doc) => ({ id: doc.id as string, title: doc.title })) });
+    .select("recordId titlePayload");
+
+  res.status(200).json({
+    thoughts: docs.map((doc) => ({ id: doc.recordId, titlePayload: plainPayload(doc.titlePayload as StoredPayload) })),
+  });
 }
 
-// POST /api/thoughts  ->  an empty thought, ready to be written in.
-export async function createThought(_req: Request, res: Response): Promise<void> {
-  const doc = await Thought.create({ title: "", body: "", order: await topOrder() });
-  res.status(201).json({ thought: toFull(doc) });
+// POST /api/thoughts  { recordId, titlePayload, bodyPayload }  ->  an empty thought, made by the browser.
+export async function createThought(req: Request, res: Response): Promise<void> {
+  const input = bodyOf(req);
+  const recordId = input.recordId;
+  const titlePayload = parsePayload(input.titlePayload, TITLE_PAYLOAD_MAX);
+  const bodyPayload = parsePayload(input.bodyPayload, BODY_PAYLOAD_MAX);
+
+  if (!isRecordId(recordId) || !titlePayload || !bodyPayload) {
+    res.status(400).json({ message: "Send recordId, titlePayload and bodyPayload" });
+    return;
+  }
+
+  try {
+    await Thought.create({ recordId, order: await topOrder(), titlePayload, bodyPayload });
+  } catch (error) {
+    if ((error as { code?: number }).code === 11000) {
+      res.status(409).json({ message: "That thought already exists" });
+      return;
+    }
+    throw error;
+  }
+
+  res.status(201).json({ thought: { id: recordId } });
 }
 
 // GET /api/thoughts/:id
 export async function getThought(req: Request, res: Response): Promise<void> {
   const id = req.params.id;
-  if (!isValidObjectId(id)) {
+  if (!isRecordId(id)) {
     res.status(400).json({ message: "Not a valid id" });
     return;
   }
-  const doc = await Thought.findById(id);
+  const doc = await Thought.findOne({ recordId: id });
   if (!doc) {
     res.status(404).json({ message: "That thought no longer exists" });
     return;
   }
-  res.status(200).json({ thought: toFull(doc) });
+  res.status(200).json({
+    thought: {
+      id: doc.recordId,
+      titlePayload: plainPayload(doc.titlePayload as StoredPayload),
+      bodyPayload: plainPayload(doc.bodyPayload as StoredPayload),
+    },
+  });
 }
 
-// PATCH /api/thoughts/:id  { title?, body? }
+// PATCH /api/thoughts/:id  { titlePayload?, bodyPayload? }
 export async function updateThought(req: Request, res: Response): Promise<void> {
   const id = req.params.id;
-  if (!isValidObjectId(id)) {
+  if (!isRecordId(id)) {
     res.status(400).json({ message: "Not a valid id" });
     return;
   }
-  if (typeof req.body !== "object" || req.body === null) {
-    res.status(400).json({ message: "Send the changes as a JSON object" });
-    return;
-  }
-  const input = req.body as Record<string, unknown>;
 
-  const changes: Partial<Pick<ThoughtFields, "title" | "body">> = {};
-  if (input.title !== undefined) {
-    const parsed = parseTitle(input.title);
-    if ("error" in parsed) {
-      res.status(400).json({ message: parsed.error });
+  const input = bodyOf(req);
+  const changes: { titlePayload?: StoredPayload; bodyPayload?: StoredPayload } = {};
+
+  if (input.titlePayload !== undefined) {
+    const parsed = parsePayload(input.titlePayload, TITLE_PAYLOAD_MAX);
+    if (!parsed) {
+      res.status(400).json({ message: "titlePayload is not valid" });
       return;
     }
-    changes.title = parsed.title;
+    changes.titlePayload = parsed;
   }
-  if (input.body !== undefined) {
-    const parsed = parseBody(input.body);
-    if ("error" in parsed) {
-      res.status(400).json({ message: parsed.error });
+  if (input.bodyPayload !== undefined) {
+    const parsed = parsePayload(input.bodyPayload, BODY_PAYLOAD_MAX);
+    if (!parsed) {
+      res.status(400).json({ message: "bodyPayload is not valid" });
       return;
     }
-    changes.body = parsed.body;
+    changes.bodyPayload = parsed;
   }
-  if (changes.title === undefined && changes.body === undefined) {
+  if (!changes.titlePayload && !changes.bodyPayload) {
     res.status(400).json({ message: "Nothing to save" });
     return;
   }
 
-  const doc = await Thought.findByIdAndUpdate(id, { $set: changes }, { new: true }).select("title");
+  const doc = await Thought.findOneAndUpdate({ recordId: id }, { $set: changes }, { returnDocument: "after" }).select(
+    "recordId",
+  );
   if (!doc) {
     res.status(404).json({ message: "That thought no longer exists" });
     return;
   }
-  res.status(200).json({ thought: { id: doc.id as string, title: doc.title } });
+  res.status(200).json({ ok: true });
 }
 
 // PUT /api/thoughts/order  { ids: string[] }  ->  the collection in exactly this order.
 export async function reorderThoughts(req: Request, res: Response): Promise<void> {
-  const ids: unknown =
-    typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>).ids : undefined;
+  const ids: unknown = bodyOf(req).ids;
 
   if (
     !Array.isArray(ids) ||
     ids.length > MAX_REORDER ||
-    !ids.every((value) => typeof value === "string" && isValidObjectId(value)) ||
+    !ids.every((value) => isRecordId(value)) ||
     new Set(ids).size !== ids.length
   ) {
     res.status(400).json({ message: "ids must be a list of unique thought ids" });
@@ -119,8 +131,12 @@ export async function reorderThoughts(req: Request, res: Response): Promise<void
 
   const list = ids as string[];
   if (list.length > 0) {
+    // bulkWrite is NOT covered by the user-scope plugin, so the user is added to every filter by hand.
+    const userId = currentUserId();
     await Thought.bulkWrite(
-      list.map((id, index) => ({ updateOne: { filter: { _id: id }, update: { $set: { order: index } } } })),
+      list.map((id, index) => ({
+        updateOne: { filter: { userId, recordId: id }, update: { $set: { order: index } } },
+      })),
     );
   }
   res.status(200).json({ ok: true });
@@ -129,11 +145,11 @@ export async function reorderThoughts(req: Request, res: Response): Promise<void
 // DELETE /api/thoughts/:id
 export async function deleteThought(req: Request, res: Response): Promise<void> {
   const id = req.params.id;
-  if (!isValidObjectId(id)) {
+  if (!isRecordId(id)) {
     res.status(400).json({ message: "Not a valid id" });
     return;
   }
-  const doc = await Thought.findByIdAndDelete(id);
+  const doc = await Thought.findOneAndDelete({ recordId: id });
   if (!doc) {
     res.status(404).json({ message: "That thought no longer exists" });
     return;

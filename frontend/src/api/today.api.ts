@@ -1,4 +1,5 @@
-import { api } from "./api";
+import { createPlanStore } from "./planStore";
+import type { PlanSnapshot } from "./planStore";
 
 export interface TodayItem {
   id: string;
@@ -13,15 +14,20 @@ export interface TodayPlan {
   updatedAt: string;
 }
 
+const store = createPlanStore("today", "/today");
+
+function toPlan(date: string, snapshot: PlanSnapshot): TodayPlan {
+  return { date, items: snapshot.items, createdAt: snapshot.createdAt, updatedAt: snapshot.updatedAt };
+}
+
 // null means nothing has been added to today yet.
 export async function fetchTodayPlan(date: string): Promise<TodayPlan | null> {
-  const { data } = await api.get<{ plan: TodayPlan | null }>(`/today/${date}`);
-  return data.plan;
+  const snapshot = await store.fetchPlan(date);
+  return snapshot ? toPlan(date, snapshot) : null;
 }
 
 export async function addTodayItem(date: string, text: string): Promise<TodayPlan> {
-  const { data } = await api.post<{ plan: TodayPlan }>(`/today/${date}/items`, { text });
-  return data.plan;
+  return toPlan(date, await store.addItem(date, text));
 }
 
 export async function updateTodayItem(
@@ -29,11 +35,9 @@ export async function updateTodayItem(
   itemId: string,
   patch: { text?: string; completed?: boolean },
 ): Promise<TodayPlan> {
-  const { data } = await api.put<{ plan: TodayPlan }>(`/today/${date}/items/${itemId}`, patch);
-  return data.plan;
+  return toPlan(date, await store.updateItem(date, itemId, patch));
 }
 
 export async function deleteTodayItem(date: string, itemId: string): Promise<TodayPlan> {
-  const { data } = await api.delete<{ plan: TodayPlan }>(`/today/${date}/items/${itemId}`);
-  return data.plan;
+  return toPlan(date, await store.deleteItem(date, itemId));
 }

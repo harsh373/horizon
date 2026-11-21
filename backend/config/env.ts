@@ -11,6 +11,7 @@ export interface Env {
   clientOrigin: string;
   clerkPublishableKey: string;
   clerkSecretKey: string;
+  vaultSecret: string;
   mongodbUri: string;
   cloudinaryCloudName: string;
   cloudinaryApiKey: string;
@@ -44,6 +45,15 @@ function requireValue(name: string, value: string | undefined): string {
   return value.trim();
 }
 
+// A base64 secret that must decode to at least `minBytes` bytes.
+function requireBase64Secret(name: string, value: string | undefined, minBytes: number): string {
+  const secret = requireValue(name, value);
+  if (Buffer.from(secret, "base64").length < minBytes) {
+    throw new Error(`${name} must be at least ${minBytes} random bytes (base64). Generate one with: openssl rand -base64 32`);
+  }
+  return secret;
+}
+
 // AI settings are optional: without them the journal works exactly as before.
 function optionalValue(value: string | undefined, fallback: string): string {
   const trimmed = value?.trim();
@@ -59,6 +69,7 @@ export const env: Env = {
   clientOrigin: process.env.CLIENT_ORIGIN ?? "http://localhost:5173",
   clerkPublishableKey: requireValue("CLERK_PUBLISHABLE_KEY", process.env.CLERK_PUBLISHABLE_KEY),
   clerkSecretKey: requireValue("CLERK_SECRET_KEY", process.env.CLERK_SECRET_KEY),
+  vaultSecret: requireBase64Secret("VAULT_SECRET", process.env.VAULT_SECRET, 32),
   mongodbUri: requireValue("MONGODB_URI", process.env.MONGODB_URI),
   cloudinaryCloudName: requireValue("CLOUDINARY_CLOUD_NAME", process.env.CLOUDINARY_CLOUD_NAME),
   cloudinaryApiKey: requireValue("CLOUDINARY_API_KEY", process.env.CLOUDINARY_API_KEY),

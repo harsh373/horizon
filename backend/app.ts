@@ -20,6 +20,7 @@ import nowRoutes from "./routes/now.routes";
 import quoteRoutes from "./routes/quote.routes";
 import circleRoutes from "./routes/circle.routes";
 import thoughtRoutes from "./routes/thought.routes";
+import vaultRoutes from "./routes/vault.routes";
 
 const app = express();
 
@@ -50,6 +51,7 @@ app.use(async (_req: Request, _res: Response, next: NextFunction) => {
 });
 
 app.use("/api", requireAuth);
+app.use("/api/vault", vaultRoutes);
 app.use("/api/tracks", trackRoutes);
 app.use("/api/journal", journalRoutes);
 app.use("/api/circle", circleRoutes);

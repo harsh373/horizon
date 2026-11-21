@@ -1,88 +1,73 @@
 import type { Request, Response } from "express";
-import type { HydratedDocument } from "mongoose";
 import { TimeTravelEntry } from "../models/TimeTravelEntry";
-import type { TimeTravelEntryFields } from "../models/TimeTravelEntry";
 import { isValidDayKey } from "../utility/dayKey";
+import { isRecordId, parsePayload, plainPayload } from "../utility/payload";
+import type { StoredPayload } from "../utility/payload";
 
-const THOUGHT_LIMIT = 2000;
-const PRESENT_LIMIT = 1000;
+const THOUGHT_PAYLOAD_MAX = 20_000;
+const PRESENT_PAYLOAD_MAX = 12_000;
 const RECENT_DAYS = 14;
 const ARCHIVE_PAGE_SIZE = 10;
 
-interface EntryResponse {
-  id: string;
-  date: string;
-  futureThought: string;
-  presentState?: string;
-  createdAt: Date;
+function bodyOf(req: Request): Record<string, unknown> {
+  return typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
 }
 
-function toResponse(doc: HydratedDocument<TimeTravelEntryFields>): EntryResponse {
-  return {
-    id: doc.id as string,
-    date: doc.date,
-    futureThought: doc.futureThought,
-    presentState: doc.presentState,
-    createdAt: doc.createdAt,
-  };
-}
-
-// POST /api/now/entries  ->  records one ENTER FUTURE moment. This is the ONLY
+// POST /api/now/entries  { recordId, date, payload }  ->  records one ENTER FUTURE moment. This is the ONLY
 // action that creates a row, and therefore the only thing that affects the count.
-// Opening the Time Travel screen never calls this — so a refresh, a rerender, or
-// backing out of the screen without pressing ENTER FUTURE can never add a count.
 export async function createEntry(req: Request, res: Response): Promise<void> {
-  const date = req.body?.date;
-  if (!isValidDayKey(date)) {
-    res.status(400).json({ message: "date must look like 2026-10-08" });
+  const input = bodyOf(req);
+  const payload = parsePayload(input.payload, THOUGHT_PAYLOAD_MAX);
+  if (!isRecordId(input.recordId) || !isValidDayKey(input.date) || !payload) {
+    res.status(400).json({ message: "Send recordId, date and payload" });
     return;
   }
 
-  const futureThought = typeof req.body?.futureThought === "string" ? req.body.futureThought.trim() : "";
-  if (!futureThought) {
-    res.status(400).json({ message: "futureThought is required" });
-    return;
+  try {
+    const doc = await TimeTravelEntry.create({ recordId: input.recordId, date: input.date, payload });
+    res.status(201).json({ entry: { id: doc.recordId, date: doc.date, createdAt: doc.createdAt } });
+  } catch (error) {
+    if ((error as { code?: number }).code === 11000) {
+      res.status(409).json({ message: "That entry already exists" });
+      return;
+    }
+    throw error;
   }
-  if (futureThought.length > THOUGHT_LIMIT) {
-    res.status(400).json({ message: "futureThought is too long" });
-    return;
-  }
-
-  const doc = await TimeTravelEntry.create({ date, futureThought });
-  res.status(201).json({ entry: toResponse(doc) });
 }
 
-// PATCH /api/now/entries/:id  ->  attaches the optional "what are you doing now"
-// text written after RETURN TO NOW onto the escape it followed.
+// PATCH /api/now/entries/:id  { presentPayload }  ->  attaches the optional text written after RETURN TO NOW.
 export async function updatePresentState(req: Request, res: Response): Promise<void> {
-  const { id } = req.params;
-
-  const presentState = typeof req.body?.presentState === "string" ? req.body.presentState.trim() : "";
-  if (!presentState) {
-    res.status(400).json({ message: "presentState is required" });
+  const id = req.params.id;
+  if (!isRecordId(id)) {
+    res.status(404).json({ message: "No such entry" });
     return;
   }
-  if (presentState.length > PRESENT_LIMIT) {
-    res.status(400).json({ message: "presentState is too long" });
+  const presentPayload = parsePayload(bodyOf(req).presentPayload, PRESENT_PAYLOAD_MAX);
+  if (!presentPayload) {
+    res.status(400).json({ message: "presentPayload is not valid" });
     return;
   }
 
-  const doc = await TimeTravelEntry.findByIdAndUpdate(
-    id,
-    { $set: { presentState } },
-    { new: true, runValidators: true },
+  const doc = await TimeTravelEntry.findOneAndUpdate(
+    { recordId: id },
+    { $set: { presentPayload } },
+    { returnDocument: "after" },
   );
-
   if (!doc) {
     res.status(404).json({ message: "No such entry" });
     return;
   }
-  res.status(200).json({ entry: toResponse(doc) });
+  res.status(200).json({
+    entry: {
+      id: doc.recordId,
+      date: doc.date,
+      payload: plainPayload(doc.payload as StoredPayload),
+      createdAt: doc.createdAt,
+    },
+  });
 }
 
-// GET /api/now/today?date=2026-10-08  ->  the count for that date, counted fresh
-// from the actual stored entries every single time — never a separately maintained
-// counter field, so there is nothing that can drift out of sync or double-count.
+// GET /api/now/today?date=2026-10-08  ->  the count for that date, counted fresh from the stored entries.
 export async function getTodayCount(req: Request, res: Response): Promise<void> {
   const date = req.query.date;
   if (!isValidDayKey(date)) {
@@ -94,8 +79,7 @@ export async function getTodayCount(req: Request, res: Response): Promise<void> 
   res.status(200).json({ date, count });
 }
 
-// GET /api/now/recent  ->  escape counts per day, most recent first, for the
-// small RECENT list on the page.
+// GET /api/now/recent  ->  escape counts per day, most recent first. Only day keys and counts, nothing written.
 export async function getRecent(_req: Request, res: Response): Promise<void> {
   const results = await TimeTravelEntry.aggregate<{ _id: string; count: number }>([
     { $group: { _id: "$date", count: { $sum: 1 } } },
@@ -108,21 +92,8 @@ export async function getRecent(_req: Request, res: Response): Promise<void> {
   });
 }
 
-interface ArchiveEntryPreview {
-  id: string;
-  futureThought: string;
-  createdAt: Date;
-}
-
-interface ArchiveDayResponse {
-  date: string;
-  count: number;
-  entries: ArchiveEntryPreview[];
-}
-
-// GET /api/now/archive?cursor=2026-10-05  ->  every escape, grouped by day,
-// newest first, 10 days per page — same cursor convention as the journal
-// archive. This is the full history; /recent above stays a short quiet list.
+// GET /api/now/archive?cursor=2026-10-05  ->  every escape, grouped by day, newest first, 10 days per page.
+// The thoughts come back encrypted; the browser decrypts them.
 export async function getArchive(req: Request, res: Response): Promise<void> {
   const cursor = req.query.cursor;
   const match = typeof cursor === "string" && isValidDayKey(cursor) ? { date: { $lt: cursor } } : {};
@@ -130,7 +101,7 @@ export async function getArchive(req: Request, res: Response): Promise<void> {
   const results = await TimeTravelEntry.aggregate<{
     _id: string;
     count: number;
-    entries: { id: unknown; futureThought: string; createdAt: Date }[];
+    entries: { id: string; payload: StoredPayload; createdAt: Date }[];
   }>([
     { $match: match },
     { $sort: { date: -1, createdAt: 1 } },
@@ -138,7 +109,7 @@ export async function getArchive(req: Request, res: Response): Promise<void> {
       $group: {
         _id: "$date",
         count: { $sum: 1 },
-        entries: { $push: { id: "$_id", futureThought: "$futureThought", createdAt: "$createdAt" } },
+        entries: { $push: { id: "$recordId", payload: "$payload", createdAt: "$createdAt" } },
       },
     },
     { $sort: { _id: -1 } },
@@ -148,18 +119,16 @@ export async function getArchive(req: Request, res: Response): Promise<void> {
   const hasMore = results.length > ARCHIVE_PAGE_SIZE;
   const page = hasMore ? results.slice(0, ARCHIVE_PAGE_SIZE) : results;
 
-  const days: ArchiveDayResponse[] = page.map((row) => ({
-    date: row._id,
-    count: row.count,
-    entries: row.entries.map((entry) => ({
-      id: String(entry.id),
-      futureThought: entry.futureThought,
-      createdAt: entry.createdAt,
-    })),
-  }));
-
   res.status(200).json({
-    days,
+    days: page.map((row) => ({
+      date: row._id,
+      count: row.count,
+      entries: row.entries.map((entry) => ({
+        id: entry.id,
+        payload: plainPayload(entry.payload),
+        createdAt: entry.createdAt,
+      })),
+    })),
     nextCursor: hasMore ? (page.at(-1)?._id ?? null) : null,
   });
 }

@@ -1,11 +1,11 @@
 import { Schema, model } from "mongoose";
+import type { StoredPayload } from "../utility/payload";
+import { payloadSchema } from "./payloadSchema";
 
-// One document per user. Holds small preferences that aren't tied to a
-// specific day, quest, or photo, currently just the home-screen countdown.
+// One document per user. The preferences (countdown date and label) are inside the encrypted payload.
 export interface SettingsFields {
   key: string;
-  countdownDate: string; // "YYYY-MM-DD" or "" for none set
-  countdownLabel: string;
+  payload: StoredPayload;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -15,8 +15,7 @@ const SINGLETON_KEY = "singleton";
 const settingsSchema = new Schema<SettingsFields>(
   {
     key: { type: String, required: true, default: SINGLETON_KEY },
-    countdownDate: { type: String, default: "", match: /^(\d{4}-\d{2}-\d{2})?$/ },
-    countdownLabel: { type: String, default: "", maxlength: 120 },
+    payload: { type: payloadSchema, required: true },
   },
   { timestamps: true },
 );

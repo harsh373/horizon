@@ -1,39 +1,27 @@
 import { Schema, model } from "mongoose";
-
-// Must match the world size in client/src/components/map/world.ts.
-export const WORLD_W = 1600;
-export const WORLD_H = 1000;
-
-export const QUOTE_LIMITS = { text: 2000, author: 120, note: 500 } as const;
+import type { StoredPayload } from "../utility/payload";
+import { payloadSchema } from "./payloadSchema";
 
 export interface QuoteFields {
-  // Sent by the client once per "add" session so a retried save can't create a duplicate.
-  clientKey?: string;
-  text: string;
-  author: string;
-  note: string;
-  // Where the landmark sits in the fictional world. Chosen once, never recalculated.
-  x: number;
-  y: number;
+  // Made by the browser, once per "add" session, so a retried save can't create a duplicate.
+  recordId: string;
+  // {text, author, note}, encrypted.
+  payload: StoredPayload;
+  // {x, y}, encrypted. Where the landmark sits on the map. Location data, so it is encrypted too.
+  pinPayload: StoredPayload;
   createdAt: Date;
   updatedAt: Date;
 }
 
 const quoteSchema = new Schema<QuoteFields>(
   {
-    clientKey: { type: String, maxlength: 64 },
-    text: { type: String, required: true, maxlength: QUOTE_LIMITS.text },
-    author: { type: String, default: "", maxlength: QUOTE_LIMITS.author },
-    note: { type: String, default: "", maxlength: QUOTE_LIMITS.note },
-    x: { type: Number, required: true, min: 0, max: WORLD_W },
-    y: { type: Number, required: true, min: 0, max: WORLD_H },
+    recordId: { type: String, required: true, immutable: true },
+    payload: { type: payloadSchema, required: true },
+    pinPayload: { type: payloadSchema, required: true },
   },
   { timestamps: true },
 );
 
-quoteSchema.index(
-  { userId: 1, clientKey: 1 },
-  { unique: true, partialFilterExpression: { clientKey: { $type: "string" } } },
-);
+quoteSchema.index({ userId: 1, recordId: 1 }, { unique: true });
 
 export const Quote = model<QuoteFields>("Quote", quoteSchema);
