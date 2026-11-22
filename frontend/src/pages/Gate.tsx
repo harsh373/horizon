@@ -1,4 +1,6 @@
-import { SignIn } from "@clerk/react";
+import { SignInButton } from "@clerk/react";
+import { ArrowRight } from "lucide-react";
+import { Link } from "react-router-dom";
 import "./gate.css";
 
 export default function Gate() {
@@ -27,9 +29,25 @@ export default function Gate() {
         <h1 className="mt-6 font-serif text-[2.25rem] font-medium leading-tight tracking-tight sm:text-[2.75rem]">
           Horizon
         </h1>
-        <p className="mb-8 mt-3 text-[17px] text-secondary">A private archive of my life.</p>
+        <p className="mt-3 text-[17px] text-secondary">A private archive of my life.</p>
 
-        <SignIn routing="hash" />
+        {/* One small button. Clerk's sign-in opens as a popup only when it's clicked. */}
+        <SignInButton mode="modal">
+          <button
+            type="button"
+            className="mt-10 inline-flex h-11 items-center gap-2 rounded-full bg-text px-6 text-[15px] font-semibold text-bg transition-opacity duration-200 hover:opacity-85 active:scale-[0.98]"
+          >
+            Continue
+            <ArrowRight size={16} aria-hidden="true" />
+          </button>
+        </SignInButton>
+
+        <Link
+          to="/privacy"
+          className="mt-8 text-[13px] text-secondary transition-colors duration-150 hover:text-text"
+        >
+          Privacy
+        </Link>
       </div>
     </main>
   );

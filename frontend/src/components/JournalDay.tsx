@@ -1,9 +1,8 @@
-import { Check, MapPin, Pencil } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
+import { MapPin, Pencil } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchArchivePage, fetchEntry, saveEntry } from "../api/journal.api";
-import type { ArchiveEntry, EntryFields, JournalEntry, JournalPhoto, Mood } from "../api/journal.api";
-import { fetchTodayPlan } from "../api/today.api";
+import type { ArchiveEntry, EntryFields, JournalEntry, JournalPhoto } from "../api/journal.api";
 import { formatLongDate, formatWeekday, getJournalToday } from "../config/dates";
 import type { DayKey } from "../config/dates";
 import AutoGrowTextarea from "./AutoGrowTextarea";
@@ -11,13 +10,10 @@ import LineField from "./LineField";
 import Countdown from "./Countdown";
 import DayNav from "./DayNav";
 import DayPhotos from "./DayPhotos";
-import Lightbox from "./Lightbox";
-import { MoodBadge, MoodPicker } from "./MoodPicker";
+import JournalLightbox from "./JournalLightbox";
 import { useMoods } from "./MoodProvider";
 import RecentDays from "./RecentDays";
-import TodayChecklist from "./TodayChecklist";
 import TracksOverview from "./TrackOverview";
-import { analyzeDay } from "../api/insights.api";
 
 const LIMIT_SUMMARY = 50_000;
 const LIMIT_LOCATION = 120;
@@ -46,23 +42,8 @@ function toFields(entry: JournalEntry | null): EntryFields {
   };
 }
 
-type LightboxPhoto = ComponentProps<typeof Lightbox>["photo"];
-
-function toLightboxPhoto(photo: JournalPhoto, day: DayKey): LightboxPhoto {
-  return {
-    id: photo.id,
-    url: photo.url,
-    caption: photo.caption,
-    date: day,
-    source: "journal",
-    sourceHref: `/day/${day}`,
-    sourceLabel: "Journal",
-  };
-}
-
 type LoadState = "loading" | "ready" | "error";
 type SaveState = "idle" | "saving" | "saved" | "error";
-type Tally = { done: number; total: number };
 
 export default function JournalDay({ day }: { day: DayKey }) {
   const { setDayMood } = useMoods();
@@ -76,7 +57,6 @@ export default function JournalDay({ day }: { day: DayKey }) {
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [recentDays, setRecentDays] = useState<ArchiveEntry[]>([]);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const [tally, setTally] = useState<Tally | null>(null);
 
   const draftRef = useRef<EntryFields>(EMPTY_FIELDS);
   const savedJsonRef = useRef(JSON.stringify(EMPTY_FIELDS));
@@ -84,10 +64,6 @@ export default function JournalDay({ day }: { day: DayKey }) {
   const timerRef = useRef<number | undefined>(undefined);
   const queueRef = useRef<Promise<void>>(Promise.resolve());
   const loadTokenRef = useRef(0);
-
-  const handleTally = useCallback((done: number, total: number) => {
-    setTally({ done, total });
-  }, []);
 
   const load = useCallback(() => {
     const token = ++loadTokenRef.current;
@@ -103,6 +79,7 @@ export default function JournalDay({ day }: { day: DayKey }) {
         setDraft(fields);
         setHasEntry(entry !== null);
         setPhotos(entry?.photos ?? []);
+        setLightboxIndex(null);
         setLoadState("ready");
       })
       .catch(() => {
@@ -119,25 +96,6 @@ export default function JournalDay({ day }: { day: DayKey }) {
       .then(({ entries }) => setRecentDays(entries.filter((entry) => entry.date !== day).slice(0, RECENT_DAYS_COUNT)))
       .catch(() => setRecentDays([]));
   }, [day]);
-
-  // Past days: read that day's saved plan. Today is reported live by the checklist.
-  useEffect(() => {
-    setTally(null);
-    if (isToday) return;
-
-    let cancelled = false;
-    fetchTodayPlan(day)
-      .then((plan) => {
-        if (cancelled) return;
-        const planItems = plan?.items ?? [];
-        setTally({ done: planItems.filter((item) => item.completed).length, total: planItems.length });
-      })
-      .catch(() => undefined);
-
-    return () => {
-      cancelled = true;
-    };
-  }, [day, isToday]);
 
   const flush: () => Promise<void> = useCallback(() => {
     window.clearTimeout(timerRef.current);
@@ -174,19 +132,21 @@ export default function JournalDay({ day }: { day: DayKey }) {
     timerRef.current = window.setTimeout(() => void flush(), SAVE_DELAY_MS);
   }
 
-  function handlePhotosChange(next: JournalPhoto[]) {
-    setPhotos(next);
-    if (!hasEntry && next.length > 0) {
-      setHasEntry(true);
-      setDayMood(day, draftRef.current.mood);
-    }
+  function handlePhotoAdded(photo: JournalPhoto) {
+    setPhotos((current) => (current.some((item) => item.id === photo.id) ? current : [...current, photo]));
+    setHasEntry(true);
+    setDayMood(day, draftRef.current.mood);
+  }
+
+  function handlePhotoRemoved(photoId: string) {
+    setPhotos((current) => current.filter((item) => item.id !== photoId));
+    setLightboxIndex(null);
   }
 
   async function finishEditing() {
     await flush();
     if (JSON.stringify(draftRef.current) === savedJsonRef.current) {
       setEditing(false);
-      analyzeDay(day).catch(() => undefined);
     }
   }
 
@@ -213,12 +173,9 @@ export default function JournalDay({ day }: { day: DayKey }) {
   const showEmptyState = ready && !hasEntry && !editing;
   const hasOneLiner = draft.whatIDidToday.trim().length > 0;
   const showRecent = !editing && recentDays.length > 0;
-  // Visible on today's page, but hidden while you're writing so the writing
-  // area comes first. It comes back when you press Done.
-  const showTodayChecklist = isToday && ready && !editing;
-  // While the checklist is on screen it already shows the count, so the header
-  // line appears everywhere else: past days, and today while you're writing.
-  const showTally = !showTodayChecklist && tally !== null && tally.total > 0;
+  // The header row holds only the location. Show it while editing,
+  // or when viewing an entry that actually has a location.
+  const showLocationRow = ready && (editing || (hasEntry && draft.location.length > 0));
 
   return (
     <>
@@ -256,14 +213,8 @@ export default function JournalDay({ day }: { day: DayKey }) {
               <p className="text-[15px] font-medium text-secondary">{formatWeekday(day)}</p>
               <h1 className="type-display mt-1">{formatLongDate(day)}</h1>
 
-              {ready && (editing || hasEntry) && (
+              {showLocationRow && (
                 <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-3">
-                  {editing ? (
-                    <MoodPicker value={draft.mood} onChange={(mood: Mood) => update({ mood })} />
-                  ) : (
-                    <MoodBadge mood={draft.mood} />
-                  )}
-
                   {editing ? (
                     <label className="flex items-center gap-1.5 text-secondary">
                       <MapPin size={14} strokeWidth={1.75} />
@@ -278,12 +229,10 @@ export default function JournalDay({ day }: { day: DayKey }) {
                       </div>
                     </label>
                   ) : (
-                    draft.location && (
-                      <span className="flex items-center gap-1.5 text-[13px] text-secondary">
-                        <MapPin size={14} strokeWidth={1.75} />
-                        {draft.location}
-                      </span>
-                    )
+                    <span className="flex items-center gap-1.5 text-[13px] text-secondary">
+                      <MapPin size={14} strokeWidth={1.75} />
+                      {draft.location}
+                    </span>
                   )}
                 </div>
               )}
@@ -303,16 +252,7 @@ export default function JournalDay({ day }: { day: DayKey }) {
                   </Link>
                 </div>
               )}
-
-              {showTally && tally && (
-                <p className="mt-4 flex items-center gap-1.5 text-[12px] tabular-nums text-tertiary">
-                  <Check size={12} strokeWidth={2.5} />
-                  {tally.done} of {tally.total} to-dos done
-                </p>
-              )}
             </header>
-
-            {showTodayChecklist && <TodayChecklist onTallyChange={handleTally} />}
 
             {loadState === "loading" && <div className="h-64" aria-busy="true" />}
 
@@ -349,9 +289,14 @@ export default function JournalDay({ day }: { day: DayKey }) {
                   day={day}
                   photos={photos}
                   editing={editing}
-                  onPhotosChange={handlePhotosChange}
+                  onPhotoAdded={handlePhotoAdded}
+                  onPhotoRemoved={handlePhotoRemoved}
                   onPhotoClick={(index) => setLightboxIndex(index)}
                 />
+
+                {editing && (
+                  <p className="mt-3 text-[13px] text-tertiary">We advise adding only 2 photos a day.</p>
+                )}
 
                 {editing || hasOneLiner ? (
                   <section className="mt-6">
@@ -395,7 +340,8 @@ export default function JournalDay({ day }: { day: DayKey }) {
 
                 {(editing || draft.dailySummary) && (
                   <section className="mt-12">
-                    <h2 className="type-eyebrow">Daily Summary</h2>
+                    {/* Label only. The field name dailySummary stays (it is the encrypted payload key). */}
+                    <h2 className="type-eyebrow">The Story</h2>
                     {editing ? (
                       <AutoGrowTextarea
                         value={draft.dailySummary}
@@ -431,8 +377,9 @@ export default function JournalDay({ day }: { day: DayKey }) {
       </div>
 
       {lightboxIndex !== null && photos[lightboxIndex] && (
-        <Lightbox
-          photo={toLightboxPhoto(photos[lightboxIndex], day)}
+        <JournalLightbox
+          photo={photos[lightboxIndex]}
+          day={day}
           onClose={() => setLightboxIndex(null)}
           onPrev={lightboxIndex > 0 ? () => setLightboxIndex(lightboxIndex - 1) : undefined}
           onNext={lightboxIndex < photos.length - 1 ? () => setLightboxIndex(lightboxIndex + 1) : undefined}

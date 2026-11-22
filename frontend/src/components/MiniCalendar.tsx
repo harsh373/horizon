@@ -1,5 +1,6 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight, Star } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useUser } from "@clerk/react";
 import type { Mood } from "../api/journal.api";
 import {
   buildMonthGrid,
@@ -9,9 +10,6 @@ import {
   shiftMonth,
 } from "../config/dates";
 import type { DayKey } from "../config/dates";
-
-// Journal tracking started on this date — nothing before this counts as "missed"
-const START_DATE: DayKey = "2026-09-22";
 
 interface MiniCalendarProps {
   selected: DayKey;
@@ -30,6 +28,14 @@ function monthOf(key: DayKey): { year: number; month: number } {
   return { year: now.getFullYear(), month: now.getMonth() + 1 };
 }
 
+// Local calendar day of a Date, as YYYY-MM-DD (local time, not UTC).
+function localDayKey(date: Date): DayKey {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}` as DayKey;
+}
+
 const iconButton =
   "flex h-7 w-7 items-center justify-center rounded-control text-secondary transition-colors duration-150 hover:bg-hover hover:text-text active:bg-selected";
 
@@ -41,6 +47,14 @@ export default function MiniCalendar({
   onViewChange,
 }: MiniCalendarProps) {
   const [view, setView] = useState(() => monthOf(selected));
+  const { isLoaded, user } = useUser();
+
+  // The day this person joined. null until Clerk has loaded (or if it has no date),
+  // in which case no day is ever marked as missed.
+  const joinedOn = useMemo<DayKey | null>(() => {
+    if (!isLoaded || !user?.createdAt) return null;
+    return localDayKey(new Date(user.createdAt));
+  }, [isLoaded, user?.createdAt]);
 
   useEffect(() => {
     setView(monthOf(selected));
@@ -93,7 +107,8 @@ export default function MiniCalendar({
           const isSelected = day === selected;
           const isToday = day === today;
           const isFuture = day > today;
-          const isWithinTrackedRange = day >= START_DATE && day < today;
+          const isJoinDay = joinedOn !== null && day === joinedOn;
+          const isWithinTrackedRange = joinedOn !== null && day >= joinedOn && day < today;
           const isLogged = Boolean(moods[day]);
           const isMissed = isWithinTrackedRange && !isLogged;
 
@@ -110,14 +125,19 @@ export default function MiniCalendar({
                   ? "bg-yellow-400 font-semibold text-black group-hover:opacity-90"
                   : isFuture
                     ? "font-medium text-tertiary group-hover:bg-hover"
-                    : "font-medium text-text group-hover:bg-hover"; // covers dates before START_DATE too
+                    : "font-medium text-text group-hover:bg-hover"; // days before the join day land here
+
+          const label = isJoinDay
+            ? `${formatLongDate(day)}, the day you started`
+            : formatLongDate(day);
 
           return (
             <button
               key={day}
               type="button"
               onClick={() => onSelect(day)}
-              aria-label={formatLongDate(day)}
+              aria-label={label}
+              title={isJoinDay ? "The day you started" : undefined}
               aria-pressed={isSelected}
               aria-current={isToday ? "date" : undefined}
               className="group relative flex h-9 items-start justify-center pt-0.5"
@@ -130,6 +150,14 @@ export default function MiniCalendar({
               >
                 {parts?.day}
               </span>
+              {isJoinDay && (
+                <Star
+                  aria-hidden="true"
+                  size={9}
+                  strokeWidth={0}
+                  className="pointer-events-none absolute right-0.5 top-0 fill-yellow-300 text-yellow-300"
+                />
+              )}
             </button>
           );
         })}

@@ -42,7 +42,7 @@ export default function Sidebar({ onNavigate, variant = "full" }: SidebarProps) 
   return (
     <div className="flex h-full flex-col">
       <div className="px-5 pb-3 pt-4 lg:pt-1">
-        <p className="text-[15px] font-semibold tracking-tight">Harsh&apos;s Journal</p>
+        <p className="text-[15px] font-semibold tracking-tight">Horizon</p>
       </div>
 
       <div className="flex-1 overflow-y-auto pb-4">

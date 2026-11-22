@@ -2,6 +2,10 @@ import type { DayKey } from "../config/dates";
 import type { EncryptedPayload } from "../crypto/vaultCrypto";
 import { decryptRecord, encryptRecord } from "../crypto/vaultSession";
 import { api } from "./api";
+import { decodePhotos } from "./journalPhotos.api";
+import type { JournalPhoto, RawPhoto } from "./journalPhotos.api";
+
+export type { JournalPhoto } from "./journalPhotos.api";
 
 export type Mood = "good" | "neutral" | "tough" | "special";
 
@@ -11,12 +15,6 @@ const BODY_KIND = "journal";
 const ARCHIVE_TARGET = 10;
 const MAX_RAW_PAGES = 50;
 
-export interface JournalPhoto {
-  id: string;
-  url: string;
-  publicId: string;
-  caption?: string;
-}
 export interface ArchiveEntry {
   date: DayKey;
   mood: Mood;
@@ -45,6 +43,9 @@ export interface JournalEntry extends EntryFields {
   createdAt: string;
   updatedAt: string;
 }
+
+// Saving text never touches photos, so a save result has no photo list.
+export type SavedEntry = Omit<JournalEntry, "photos">;
 
 interface MetaValue {
   mood: Mood;
@@ -96,10 +97,11 @@ interface RawArchiveEntry {
   date: DayKey;
   metaPayload: EncryptedPayload | null;
   payload: EncryptedPayload | null;
-  photos: JournalPhoto[];
+  sealedPhotos: RawPhoto[];
 }
 
 async function decodeArchiveEntry(raw: RawArchiveEntry): Promise<ArchiveEntry> {
+  const photos = await decodePhotos(raw.date, raw.sealedPhotos);
   try {
     const fields = await decodeFields(raw.date, raw.metaPayload, raw.payload);
     return {
@@ -109,7 +111,7 @@ async function decodeArchiveEntry(raw: RawArchiveEntry): Promise<ArchiveEntry> {
       whatIDidToday: fields.whatIDidToday,
       whatDrainedMe: fields.whatDrainedMe,
       tomorrowDifferent: fields.tomorrowDifferent,
-      photos: raw.photos,
+      photos,
     };
   } catch {
     // One damaged day must not hide the rest of the archive.
@@ -120,7 +122,7 @@ async function decodeArchiveEntry(raw: RawArchiveEntry): Promise<ArchiveEntry> {
       whatIDidToday: "(this day couldn't be decrypted)",
       whatDrainedMe: "",
       tomorrowDifferent: "",
-      photos: raw.photos,
+      photos,
     };
   }
 }
@@ -148,14 +150,14 @@ export async function fetchArchivePage(
 }
 
 // null means nothing has been written for that day yet.
-// If decryption fails this throws, so the editor shows its error screen instead of a blank day that could overwrite the real one.
+// If decryption of the text fails this throws, so the editor shows its error screen instead of a blank day that could overwrite the real one.
 export async function fetchEntry(date: DayKey): Promise<JournalEntry | null> {
   const { data } = await api.get<{
     entry: {
       date: DayKey;
       metaPayload: EncryptedPayload | null;
       payload: EncryptedPayload | null;
-      photos: JournalPhoto[];
+      sealedPhotos: RawPhoto[];
       createdAt: string;
       updatedAt: string;
     } | null;
@@ -164,19 +166,22 @@ export async function fetchEntry(date: DayKey): Promise<JournalEntry | null> {
   const raw = data.entry;
   if (!raw) return null;
 
-  const fields = await decodeFields(date, raw.metaPayload, raw.payload);
+  const [fields, photos] = await Promise.all([
+    decodeFields(date, raw.metaPayload, raw.payload),
+    decodePhotos(date, raw.sealedPhotos),
+  ]);
   return {
     ...fields,
     id: date,
     date,
-    photos: raw.photos,
+    photos,
     tags: [],
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
   };
 }
 
-export async function saveEntry(date: DayKey, fields: EntryFields): Promise<JournalEntry> {
+export async function saveEntry(date: DayKey, fields: EntryFields): Promise<SavedEntry> {
   const [metaPayload, payload] = await Promise.all([
     encryptRecord(META_KIND, date, { mood: fields.mood, location: fields.location.trim() } satisfies MetaValue),
     encryptRecord(BODY_KIND, date, {
@@ -187,16 +192,15 @@ export async function saveEntry(date: DayKey, fields: EntryFields): Promise<Jour
     } satisfies BodyValue),
   ]);
 
-  const { data } = await api.put<{ entry: { photos: JournalPhoto[]; createdAt: string; updatedAt: string } }>(
-    `/journal/${date}`,
-    { metaPayload, payload },
-  );
+  const { data } = await api.put<{ entry: { createdAt: string; updatedAt: string } }>(`/journal/${date}`, {
+    metaPayload,
+    payload,
+  });
 
   return {
     ...fields,
     id: date,
     date,
-    photos: data.entry.photos,
     tags: [],
     createdAt: data.entry.createdAt,
     updatedAt: data.entry.updatedAt,

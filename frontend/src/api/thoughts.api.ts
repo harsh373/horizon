@@ -1,5 +1,5 @@
 import type { EncryptedPayload } from "../crypto/vaultCrypto";
-import { decryptRecord, encryptRecord } from "../crypto/vaultSession";
+import { decryptRecord, encryptRecord, onVaultCleared } from "../crypto/vaultSession";
 import { api } from "./api";
 
 const TITLE_KIND = "thought-title";
@@ -29,6 +29,9 @@ interface BodyValue {
 // the body still writes a correct title payload. This remembers the last known state of each thought
 // that was loaded, created or saved in this tab.
 const known = new Map<string, TitleValue>();
+
+// Nothing from one account may survive into the next one on the same tab.
+onVaultCleared(() => known.clear());
 
 function normalizeTitle(value: string): string {
   return value.replace(/\s+/g, " ").trim();

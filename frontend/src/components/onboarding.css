@@ -1,0 +1,345 @@
+.ob-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: max(20px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
+  background: radial-gradient(ellipse at 50% 20%, #101636 0%, #070914 55%, #020308 100%);
+  color: #fff;
+  overflow: hidden;
+  animation: ob-fade 0.5s ease both;
+}
+
+.ob-sky {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ob-haze {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+  opacity: 0.5;
+}
+.ob-haze-a {
+  top: -10%;
+  left: -15%;
+  width: 70vw;
+  height: 70vw;
+  background: rgba(76, 90, 190, 0.35);
+}
+.ob-haze-b {
+  bottom: -15%;
+  right: -10%;
+  width: 60vw;
+  height: 60vw;
+  background: rgba(120, 70, 170, 0.22);
+}
+
+.ob-star {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: var(--s);
+  height: var(--s);
+  border-radius: 50%;
+  background: #fff;
+  opacity: var(--o);
+  animation: ob-twinkle var(--d) ease-in-out var(--delay) infinite;
+}
+.ob-star-big {
+  box-shadow: 0 0 8px 1px rgba(255, 255, 255, 0.7);
+}
+
+@keyframes ob-twinkle {
+  0%,
+  100% {
+    opacity: var(--o);
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.15;
+    transform: scale(0.7);
+  }
+}
+
+@keyframes ob-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.ob-skip {
+  position: relative;
+  z-index: 2;
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 14px;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: background 0.2s, color 0.2s;
+}
+.ob-skip:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.ob-stage {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.ob-card {
+  width: 100%;
+  max-width: 440px;
+  padding: 28px 26px 30px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 26px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.04));
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  text-align: center;
+  outline: none;
+}
+
+.ob-enter-next {
+  animation: ob-in-next 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.ob-enter-prev {
+  animation: ob-in-prev 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes ob-in-next {
+  from {
+    opacity: 0;
+    transform: translateX(36px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ob-in-prev {
+  from {
+    opacity: 0;
+    transform: translateX(-36px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ob-visual {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 150px;
+  margin-bottom: 18px;
+}
+.ob-svg {
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  overflow: visible;
+}
+.ob-svg-wide {
+  height: auto;
+  width: 100%;
+  max-width: 260px;
+}
+
+.ob-logo-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ob-logo-halo {
+  position: absolute;
+  width: 130px;
+  height: 130px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 70%);
+  animation: ob-breathe 4s ease-in-out infinite;
+}
+.ob-logo {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  border-radius: 22px;
+  object-fit: contain;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+@keyframes ob-breathe {
+  0%,
+  100% {
+    transform: scale(0.9);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+.ob-pulse {
+  animation: ob-svg-pulse 3s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.ob-pulse-b {
+  animation-delay: 1.4s;
+}
+@keyframes ob-svg-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+}
+
+.ob-spin {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ob-rotate 28s linear infinite;
+}
+@keyframes ob-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ob-eyebrow {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+.ob-title {
+  margin: 0 0 12px;
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-size: 30px;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+.ob-body {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.ob-nav {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+.ob-dots {
+  display: flex;
+  gap: 8px;
+}
+.ob-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+  transition: width 0.3s, background 0.3s;
+}
+.ob-dot-active {
+  width: 22px;
+  background: #fff;
+}
+.ob-buttons {
+  display: flex;
+  width: 100%;
+  gap: 10px;
+}
+.ob-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 50px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.15s, background 0.2s;
+}
+.ob-btn:active {
+  transform: scale(0.97);
+}
+.ob-btn-ghost {
+  width: 50px;
+  flex: none;
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+}
+.ob-btn-ghost:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.ob-btn-primary {
+  flex: 1;
+  background: #fff;
+  color: #0a0c18;
+}
+.ob-btn-primary:hover {
+  opacity: 0.92;
+}
+
+@media (min-width: 768px) {
+  .ob-title {
+    font-size: 34px;
+  }
+  .ob-card {
+    padding: 34px 32px 36px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ob-root,
+  .ob-star,
+  .ob-card,
+  .ob-logo-halo,
+  .ob-pulse,
+  .ob-spin {
+    animation: none !important;
+  }
+}

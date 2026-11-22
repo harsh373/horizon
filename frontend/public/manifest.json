@@ -1,7 +1,7 @@
 {
-  "name": "Harsh's Journal",
-  "short_name": "Journal",
-  "description": "A private archive of my life.",
+  "name": "Horizon",
+  "short_name": "Horizon",
+  "description": "private diary of your life.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",

@@ -8,11 +8,19 @@ export type Mood = (typeof MOODS)[number];
 export const META_PAYLOAD_MAX = 4_000;
 export const BODY_PAYLOAD_MAX = 700_000;
 
-// Photos stay as they are until Phase 5 (photo encryption).
+// Legacy plaintext photos. Nothing writes to this any more; it only exists so the parked
+// photo library and side-quest code keeps compiling.
 export interface JournalPhoto {
   url: string;
   publicId: string;
   caption?: string;
+}
+
+// One encrypted photo. The recordId is a client-made UUID, also bound into the ciphertext.
+// The payload holds {date, caption, width, height, mime}. The image bytes live on Cloudinary, encrypted.
+export interface SealedPhoto {
+  recordId: string;
+  payload: StoredPayload;
 }
 
 export interface JournalEntryFields {
@@ -24,6 +32,7 @@ export interface JournalEntryFields {
   // Both payloads are missing on a day that so far only has photos.
   payload?: StoredPayload;
   photos: JournalPhoto[];
+  sealedPhotos: SealedPhoto[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -43,12 +52,21 @@ const photoSchema = new Schema<JournalPhoto>({
   caption: { type: String, maxlength: 500 },
 });
 
+const sealedPhotoSchema = new Schema<SealedPhoto>(
+  {
+    recordId: { type: String, required: true },
+    payload: { type: payloadSchema, required: true },
+  },
+  { _id: false },
+);
+
 const journalEntrySchema = new Schema<JournalEntryFields>(
   {
     date: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
     metaPayload: { type: payloadSchema },
     payload: { type: payloadSchema },
     photos: { type: [photoSchema], default: [] },
+    sealedPhotos: { type: [sealedPhotoSchema], default: [] },
   },
   { timestamps: true },
 );

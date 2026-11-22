@@ -1,3 +1,4 @@
+import { decryptBytes, encryptBytes } from "./blobCrypto";
 import { decryptJson, encryptJson } from "./vaultCrypto";
 import type { EncryptedPayload } from "./vaultCrypto";
 
@@ -29,4 +30,23 @@ export async function encryptRecord(kind: string, recordId: string, value: unkno
 export async function decryptRecord<T>(kind: string, recordId: string, payload: EncryptedPayload): Promise<T> {
   if (!session) throw new Error("Vault is not ready");
   return decryptJson<T>(session.key, payload, { userId: session.userId, kind, recordId });
+}
+
+// Raw bytes (photos). Same key, same context binding as the JSON records.
+export async function encryptBlob(
+  kind: string,
+  recordId: string,
+  bytes: Uint8Array<ArrayBuffer>,
+): Promise<Uint8Array<ArrayBuffer>> {
+  if (!session) throw new Error("Vault is not ready");
+  return encryptBytes(session.key, bytes, { userId: session.userId, kind, recordId });
+}
+
+export async function decryptBlob(
+  kind: string,
+  recordId: string,
+  bytes: Uint8Array<ArrayBuffer>,
+): Promise<Uint8Array<ArrayBuffer>> {
+  if (!session) throw new Error("Vault is not ready");
+  return decryptBytes(session.key, bytes, { userId: session.userId, kind, recordId });
 }

@@ -16,6 +16,8 @@ const SKIP_TYPES = new Set(["file", "checkbox", "radio", "range", "hidden", "col
 
 function harden(el: HTMLInputElement) {
   if (SKIP_TYPES.has(el.type)) return;
+  // The vault password fields opt out, so a password manager can offer to save the password.
+  if (el.hasAttribute("data-allow-autofill")) return;
   for (const [key, value] of Object.entries(ATTRS)) {
     if (el.getAttribute(key) !== value) el.setAttribute(key, value);
   }

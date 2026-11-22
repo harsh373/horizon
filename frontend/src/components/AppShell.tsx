@@ -6,7 +6,7 @@ import Sidebar from "./Sidebar";
 
 // Pages that fill the whole window on phones and manage their own scrolling there.
 // On laptop (lg and up) they sit inside the shell like any other page.
-const FULL_BLEED_PATHS = ["/map-room","/circle","/now","/thoughts"];
+const FULL_BLEED_PATHS = ["/map-room","/circle","/now","/thoughts","/settings"];
 
 export default function AppShell() {
   const { pathname } = useLocation();
@@ -89,7 +89,7 @@ export default function AppShell() {
               >
                 <Menu size={20} strokeWidth={1.75} />
               </button>
-              <span className="text-[15px] font-semibold tracking-tight">Harsh&apos;s Journal</span>
+              <span className="text-[15px] font-semibold tracking-tight">Horizon</span>
             </div>
           </header>
 

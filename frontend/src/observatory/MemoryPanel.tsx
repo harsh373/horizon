@@ -2,6 +2,7 @@ import { ArrowRight, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ArchiveEntry } from "../api/journal.api";
+import EncryptedImage from "../components/EncryptedImage";
 import { formatLongDate, formatWeekday } from "../config/dates";
 import type { DayKey } from "../config/dates";
 import { entrySummary, entryTitle } from "./model";
@@ -143,7 +144,13 @@ export default function MemoryPanel({ memory, today, loadDay, onClose }: MemoryP
                     }
                     style={{ border: "1px solid var(--obs-border)" }}
                   >
-                    <img src={photo.url} alt={photo.caption ?? ""} className="h-full w-full object-cover" loading="lazy" />
+                    <EncryptedImage
+                      kind="photo-thumb"
+                      recordId={photo.id}
+                      url={photo.thumbUrl}
+                      alt={photo.caption}
+                      className="h-full w-full object-cover"
+                    />
                   </div>
                 ))}
               </div>

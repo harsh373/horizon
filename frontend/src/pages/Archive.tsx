@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchArchivePage } from "../api/journal.api";
 import type { ArchiveEntry } from "../api/journal.api";
+import EncryptedImage from "../components/EncryptedImage";
 import { formatLongDate, formatWeekday, getJournalToday } from "../config/dates";
 import type { DayKey } from "../config/dates";
 
@@ -84,11 +85,12 @@ export default function Archive() {
                       key={photo.id}
                       className="aspect-[4/3] overflow-hidden rounded-card border border-border bg-surface"
                     >
-                      <img
-                        src={photo.url}
-                        alt={photo.caption ?? ""}
+                      <EncryptedImage
+                        kind="photo-thumb"
+                        recordId={photo.id}
+                        url={photo.thumbUrl}
+                        alt={photo.caption}
                         className="h-full w-full object-cover"
-                        loading="lazy"
                       />
                     </div>
                   ))}

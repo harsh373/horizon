@@ -1,13 +1,13 @@
 import {
   BookOpen,
   CalendarCheck,
-  Compass,
   Feather,
   Image as PhotosIcon,
   ListChecks,
   Map as MapIcon,
   Orbit,
-  Sparkles,
+  Settings as SettingsIcon,
+  ShieldCheck,
   Star,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -24,17 +24,16 @@ export interface NavEntry {
   barIcon?: LucideIcon;
 }
 
-
 export const NAV: NavEntry[] = [
   { label: "Journal", to: "/", icon: BookOpen, primary: true, barOrder: 1 },
   { label: "ElseWhere", to: "/map-room", icon: MapIcon, primary: true, barOrder: 5 },
   { label: "Weekly", to: "/weekly", icon: ListChecks },
   { label: "Tracks", to: "/tracks", icon: CalendarCheck, primary: true, barOrder: 2 },
   { label: "Thoughts", to: "/thoughts", icon: Feather, primary: true, barOrder: 3 },
-  { label: "Side Quests", to: "/side-quests", icon: Compass },
   { label: "Photos", to: "/photos", icon: PhotosIcon },
-  { label: "Circles", to: "/circle", icon: Sparkles },
   { label: "Observatory", to: "/observatory", icon: Star, primary: true, barOrder: 4, barIcon: Orbit },
+  { label: "Privacy", to: "/privacy", icon: ShieldCheck },
+  { label: "Settings", to: "/settings", icon: SettingsIcon },
 ];
 
 export const PRIMARY_NAV: NavEntry[] = NAV.filter((n) => n.primary).sort(

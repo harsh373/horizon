@@ -1,10 +1,9 @@
 import type { Request, Response } from "express";
-import type { HydratedDocument } from "mongoose";
 import { BODY_PAYLOAD_MAX, META_PAYLOAD_MAX, JournalEntry } from "../models/JournalEntry";
-import type { JournalEntryFields } from "../models/JournalEntry";
 import { isValidDayKey, isValidMonthKey } from "../utility/dayKey";
 import { parsePayload, plainPayload } from "../utility/payload";
 import type { StoredPayload } from "../utility/payload";
+import { destroyPhotoAssets, requestUserId, sealedPhotosOf } from "../utility/photoAssets";
 
 const ARCHIVE_PAGE_SIZE = 10;
 
@@ -16,37 +15,29 @@ function payloadOrNull(value: StoredPayload | null | undefined): StoredPayload |
   return value ? plainPayload(value) : null;
 }
 
-function photosOf(doc: HydratedDocument<JournalEntryFields>) {
-  return doc.photos.map((photo) => ({
-    id: String((photo as { _id?: unknown })._id ?? ""),
-    url: photo.url,
-    publicId: photo.publicId,
-    caption: photo.caption,
-  }));
-}
-
 // GET /api/journal/archive?cursor=2026-09-10  ->  10 days at a time, newest first.
 // The server can't see inside the encrypted text, so it can't tell which days are empty. It returns every day
 // that has text or photos on record, and the browser drops the ones that turn out to be blank.
 export async function listArchive(req: Request, res: Response): Promise<void> {
   const cursor = req.query.cursor;
-  const hasContent = { $or: [{ payload: { $exists: true } }, { "photos.0": { $exists: true } }] };
+  const hasContent = { $or: [{ payload: { $exists: true } }, { "sealedPhotos.0": { $exists: true } }] };
   const filter =
     typeof cursor === "string" && isValidDayKey(cursor) ? { ...hasContent, date: { $lt: cursor } } : hasContent;
 
   const docs = await JournalEntry.find(filter)
     .sort({ date: -1 })
     .limit(ARCHIVE_PAGE_SIZE + 1)
-    .select("date metaPayload payload photos");
+    .select("date metaPayload payload sealedPhotos");
   const hasMore = docs.length > ARCHIVE_PAGE_SIZE;
   const page = hasMore ? docs.slice(0, ARCHIVE_PAGE_SIZE) : docs;
+  const userId = requestUserId(req);
 
   res.status(200).json({
     entries: page.map((doc) => ({
       date: doc.date,
       metaPayload: payloadOrNull(doc.metaPayload),
       payload: payloadOrNull(doc.payload),
-      photos: photosOf(doc),
+      sealedPhotos: sealedPhotosOf(userId, doc.sealedPhotos),
     })),
     nextCursor: hasMore ? (page.at(-1)?.date ?? null) : null,
   });
@@ -88,7 +79,7 @@ export async function getEntry(req: Request, res: Response): Promise<void> {
       date: doc.date,
       metaPayload: payloadOrNull(doc.metaPayload),
       payload: payloadOrNull(doc.payload),
-      photos: photosOf(doc),
+      sealedPhotos: sealedPhotosOf(requestUserId(req), doc.sealedPhotos),
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     },
@@ -105,6 +96,7 @@ async function upsertEntry(date: string, metaPayload: StoredPayload, payload: St
 
 // PUT /api/journal/2026-09-23  { metaPayload, payload }  ->  create the day on the first save, update it after that.
 // One route for both keeps autosave safe: repeating a save can never create a duplicate.
+// Photos are separate records and are never touched by this route.
 export async function saveEntry(req: Request, res: Response): Promise<void> {
   const date = req.params.date;
   if (!isValidDayKey(date)) {
@@ -133,9 +125,7 @@ export async function saveEntry(req: Request, res: Response): Promise<void> {
     res.status(500).json({ message: "Could not save the entry" });
     return;
   }
-  res.status(200).json({
-    entry: { photos: photosOf(doc), createdAt: doc.createdAt, updatedAt: doc.updatedAt },
-  });
+  res.status(200).json({ entry: { createdAt: doc.createdAt, updatedAt: doc.updatedAt } });
 }
 
 // DELETE /api/journal/2026-09-23
@@ -151,5 +141,9 @@ export async function deleteEntry(req: Request, res: Response): Promise<void> {
     res.status(404).json({ message: "No entry for that day" });
     return;
   }
+
+  const userId = requestUserId(req);
+  await Promise.allSettled(doc.sealedPhotos.map((photo) => destroyPhotoAssets(userId, photo.recordId)));
+
   res.status(200).json({ deleted: true });
 }

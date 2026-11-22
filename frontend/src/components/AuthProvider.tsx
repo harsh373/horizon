@@ -2,6 +2,7 @@ import { useAuth as useClerkAuth, useClerk } from "@clerk/react";
 import { createContext, useCallback, useContext, useLayoutEffect, useMemo } from "react";
 import type { ReactNode } from "react";
 import { setTokenGetter } from "../api/api";
+import { forgetDeviceKeys } from "../crypto/deviceKey";
 
 type AuthStatus = "loading" | "locked" | "unlocked";
 
@@ -22,6 +23,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [getToken]);
 
   const lock = useCallback(async () => {
+    // A remembered device must not stay unlocked after the person signs out.
+    await forgetDeviceKeys();
     await signOut();
   }, [signOut]);
 

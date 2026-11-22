@@ -6,7 +6,6 @@ import type { NextFunction, Request, Response } from "express";
 import { connectDatabase } from "./config/db";
 import { env } from "./config/env";
 import healthRoutes from "./routes/health.routes";
-import insightsRoutes from "./routes/insights.routes";
 import journalRoutes from "./routes/journal.routes";
 import photoLibraryRoutes from "./routes/photoLibrary.routes";
 import settingsRoutes from "./routes/settings.routes";
@@ -61,7 +60,6 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/weekly", weeklyRoutes);
 app.use("/api/today", todayRoutes);
 app.use("/api/quotes", quoteRoutes);
-app.use("/api/insights", insightsRoutes);
 app.use("/api/now", nowRoutes);
 app.use("/api/thoughts", thoughtRoutes);
 

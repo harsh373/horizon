@@ -1,11 +1,12 @@
 import { ImagePlus, Loader2, X } from "lucide-react";
 import { useRef, useState } from "react";
-import { deletePhoto, uploadPhoto } from "../api/photos.api";
-import type { JournalPhoto } from "../api/journal.api";
+import { deleteJournalPhoto, uploadJournalPhoto } from "../api/journalPhotos.api";
+import type { JournalPhoto } from "../api/journalPhotos.api";
 import type { DayKey } from "../config/dates";
-import { compressImage } from "../utility/compressImage";
+import { PhotoError } from "../utility/preparePhoto";
+import EncryptedImage from "./EncryptedImage";
 
-const MAX_PHOTOS = 8;
+const MAX_PHOTOS = 2;
 
 interface PendingUpload {
   key: string;
@@ -16,15 +17,19 @@ interface DayPhotosProps {
   day: DayKey;
   photos: JournalPhoto[];
   editing: boolean;
-  onPhotosChange: (photos: JournalPhoto[]) => void;
+  onPhotoAdded: (photo: JournalPhoto) => void;
+  onPhotoRemoved: (photoId: string) => void;
   onPhotoClick?: (index: number) => void;
 }
 
-export default function DayPhotos({ day, photos, editing, onPhotosChange, onPhotoClick }: DayPhotosProps) {
+export default function DayPhotos({ day, photos, editing, onPhotoAdded, onPhotoRemoved, onPhotoClick }: DayPhotosProps) {
   const [pending, setPending] = useState<PendingUpload[]>([]);
+  const [removing, setRemoving] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dayRef = useRef(day);
+  dayRef.current = day;
 
   const canAddMore = photos.length + pending.length < MAX_PHOTOS;
 
@@ -32,39 +37,40 @@ export default function DayPhotos({ day, photos, editing, onPhotosChange, onPhot
     const files = Array.from(fileList).filter((file) => file.type.startsWith("image/"));
     if (files.length === 0) return;
 
-    setError(null);
     const room = Math.max(MAX_PHOTOS - (photos.length + pending.length), 0);
-    const toUpload = files.slice(0, room);
+    const batch = files.slice(0, room);
+    setError(files.length > room ? `A day can hold at most ${MAX_PHOTOS} photos.` : null);
+    if (batch.length === 0) return;
 
-    for (const file of toUpload) {
-      const key = `${file.name}-${Date.now()}-${Math.random()}`;
-      const previewUrl = URL.createObjectURL(file);
-      setPending((current) => [...current, { key, previewUrl }]);
+    const uploadDay = day;
+    const items = batch.map((file) => ({ file, key: crypto.randomUUID(), previewUrl: URL.createObjectURL(file) }));
+    setPending((current) => [...current, ...items.map(({ key, previewUrl }) => ({ key, previewUrl }))]);
 
+    // One at a time: each photo is decoded, resized and encrypted in memory, so a big batch in
+    // parallel would spike memory on a phone.
+    for (const item of items) {
       try {
-        const compressed = await compressImage(file);
-        const photo = await uploadPhoto(day, compressed);
-        onPhotosChange([...photos, photo]);
-      } catch {
-        setError("Couldn't upload one of the photos. Try again.");
+        const photo = await uploadJournalPhoto(uploadDay, item.file);
+        if (dayRef.current === uploadDay) onPhotoAdded(photo);
+      } catch (caught) {
+        setError(caught instanceof PhotoError ? caught.message : "Couldn't upload one of the photos. Try again.");
       } finally {
-        setPending((current) => {
-          const item = current.find((entry) => entry.key === key);
-          if (item) URL.revokeObjectURL(item.previewUrl);
-          return current.filter((entry) => entry.key !== key);
-        });
+        URL.revokeObjectURL(item.previewUrl);
+        setPending((current) => current.filter((entry) => entry.key !== item.key));
       }
     }
   }
 
   async function handleDelete(photo: JournalPhoto) {
-    const previous = photos;
-    onPhotosChange(photos.filter((item) => item.id !== photo.id));
+    setError(null);
+    setRemoving((current) => [...current, photo.id]);
     try {
-      await deletePhoto(day, photo.id);
+      await deleteJournalPhoto(day, photo.id);
+      onPhotoRemoved(photo.id);
     } catch {
       setError("Couldn't remove that photo. Try again.");
-      onPhotosChange(previous);
+    } finally {
+      setRemoving((current) => current.filter((id) => id !== photo.id));
     }
   }
 
@@ -78,7 +84,8 @@ export default function DayPhotos({ day, photos, editing, onPhotosChange, onPhot
             key={photo.id}
             className={
               "group relative aspect-[4/3] overflow-hidden rounded-card border border-border bg-surface" +
-              (!editing ? " cursor-zoom-in" : "")
+              (!editing ? " cursor-zoom-in" : "") +
+              (removing.includes(photo.id) ? " opacity-50" : "")
             }
             onClick={!editing ? () => onPhotoClick?.(index) : undefined}
             role={!editing ? "button" : undefined}
@@ -94,10 +101,17 @@ export default function DayPhotos({ day, photos, editing, onPhotosChange, onPhot
                 : undefined
             }
           >
-            <img src={photo.url} alt={photo.caption ?? ""} className="h-full w-full object-cover" loading="lazy" />
+            <EncryptedImage
+              kind="photo-thumb"
+              recordId={photo.id}
+              url={photo.thumbUrl}
+              alt={photo.caption}
+              className="h-full w-full object-cover"
+            />
             {editing && (
               <button
                 type="button"
+                disabled={removing.includes(photo.id)}
                 onClick={() => void handleDelete(photo)}
                 aria-label="Remove photo"
                 className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/45 text-white opacity-100 backdrop-blur-sm transition-opacity duration-150 hover:bg-black/60 focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:hover)]:opacity-0"
@@ -153,6 +167,10 @@ export default function DayPhotos({ day, photos, editing, onPhotosChange, onPhot
           event.target.value = "";
         }}
       />
+
+      {editing && !canAddMore && pending.length === 0 && !error && (
+        <p className="mt-2 text-[13px] text-tertiary">This day has its {MAX_PHOTOS} photos. Remove one to add another.</p>
+      )}
 
       {error && <p className="mt-2 text-[13px] text-alert">{error}</p>}
     </section>
